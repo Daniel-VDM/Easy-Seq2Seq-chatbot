@@ -320,7 +320,7 @@ class ChatBot:
         print("\nDone training, saved model to file.")
         encoder.save_weights("encoding_model.h5")
         decoder.save_weights("decoding_model.h5")
-        # TODO: Backup and save weights and vocab.
+        # TODO: Backup and save weights and vocab (time stamp that shit)
 
 
 # def load_encoder_decoder():
