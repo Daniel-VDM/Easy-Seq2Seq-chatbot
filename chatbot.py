@@ -5,7 +5,6 @@ import sys
 import pickle
 import itertools
 import spacy
-import keras
 from collections import deque
 from nltk.corpus import stopwords
 from keras.models import Model
@@ -26,7 +25,6 @@ BATCH_SIZE = 128
 
 # TODO: || it to train bigger models quicker... also maybe do some cleanup to make it ezer to run.
 
-# Do not modify.
 WORD_TO_ID_DICT = {}
 ID_TO_WORD_DICT = {}
 ENTITY_WORDS = pickle.load(open("ENTITY_WORDS.pickle", 'rb'))
@@ -35,7 +33,7 @@ NLP = spacy.load('en')
 
 def define_models(n_input, n_output, n_units):
     """
-    seq-to-seq encoder/decoder function. Found on most seq-to-seq tutorials.
+    Seq2Seq encoder/decoder definition function.
     """
     # define training encoder
     encoder_inputs = Input(shape=(None, n_input))
@@ -63,6 +61,61 @@ def define_models(n_input, n_output, n_units):
     return model, encoder_model, decoder_model
 
 
+class ChatBot:
+    WORD_TO_ID_DICT = {}
+    ID_TO_WORD_DICT = {}
+    ENTITY_WORDS = pickle.load(open("ENTITY_WORDS.pickle", 'rb'))
+    NLP = spacy.load('en')
+
+    def __init__(self, vocab_filename=None):
+        # TODO: argparcer...
+        if vocab_filename:
+            # TODO: validation check here.
+            pass
+
+    @staticmethod
+    def _create_and_save_vocab(filename, vocab_size):
+        """
+        Creates and pickle's vocab from the training data. Note that the training
+        data is expected to come in the following form:
+
+        5 Column separated by a tab character using the following column (in order):
+            lineID - characterID - movieID - char_name - text
+
+        :param filename: file name of training data used to generate dict.
+        :param vocab_size: the fixed size of the vocab.
+        """
+        word_freq, i = {}, 0
+        data = open(filename, encoding='utf-8', errors='ignore').read().split('\n')
+
+        for line in data:
+            if not line:
+                continue
+            for word in nltk.word_tokenize(line.split("\t")[4]):
+                if word in word_freq:
+                    word_freq[word] += 1
+                else:
+                    word_freq[word] = 1
+            i += 1
+            sys.stdout.write(f"\rCreating Vocab, parsing {i}/{len(data)} document lines.")
+            sys.stdout.flush()
+
+        alpha_vocab = set(filter(lambda w: w.isalpha(), word_freq.keys()))
+        vocab = set(map(lambda w: w.lower(), alpha_vocab - ChatBot.ENTITY_WORDS))
+
+        ner_tokens = pickle.load(open("NER_TAGS_OF_DATA.pickle", 'rb'))
+        special_tokens = ["<PADD>", "<START>", "<UNK>"] + ner_tokens
+
+        vocab = sorted(list(vocab), key=lambda w: word_freq.get(w, 0), reverse=True)
+        vocab = vocab[:vocab_size - len(special_tokens)]
+
+        dump = {"word_to_id": {c: i for i, c in enumerate(itertools.chain(special_tokens, vocab))},
+                "id_to_word": {i: c for i, c in enumerate(itertools.chain(special_tokens, vocab))}}
+        print("\nPickled vocab file.")
+        pickle.dump(dump, open("vocab.pickle", 'wb'))
+        return dump
+
+
 def one_hot_encode_array(iterable, n, vocab_len):
     encoding = np.zeros((len(iterable), n, vocab_len))
     for i, seq in enumerate(iterable):
@@ -86,22 +139,8 @@ def one_hot_encode_list(iterable, vocab_len):
 def create_vocab_file():
     word_freq = {}
 
-    data_1 = open("dataset.txt", "r").read().split("\n\n")
     data_2 = open("movie_lines_filtered.tsv", encoding='utf-8', errors='ignore').read().split('\n')
-    i, total_length = 0, len(data_1) + len(data_2)
-    for line in data_1:
-        if not line:
-            continue
-        for word in nltk.word_tokenize(line):
-            if not word:
-                continue  # Blank line error handle
-            if word in word_freq:
-                word_freq[word] += 1
-            else:
-                word_freq[word] = 1
-        i += 1
-        sys.stdout.write(f"\rCreating Vocab, parsing {i}/{total_length} document lines.")
-        sys.stdout.flush()
+    i, total_length = 0, len(data_2)
 
     for line in data_2:
         if not line:
@@ -115,18 +154,16 @@ def create_vocab_file():
         sys.stdout.write(f"\rCreating Vocab, parsing {i}/{total_length} document lines.")
         sys.stdout.flush()
 
-    common_words = set(filter(lambda w: w.isalpha(), word_freq.keys()))
-    vocab_words = (common_words - ENTITY_WORDS)
-    vocab_words = sorted(vocab_words, key=lambda w: word_freq[w], reverse=True)
+    vocab = set(map(lambda w: w.lower(), set(filter(lambda w: w.isalpha(), word_freq.keys())) - ENTITY_WORDS))
 
     ner_tokens = pickle.load(open("NER_TAGS_OF_DATA.pickle", 'rb'))
     special_tokens = ["<PADD>", "<START>", "<UNK>"] + ner_tokens
 
-    vocab = list(stopwords.words('english')) + list(map(lambda w: w.lower(), vocab_words))
-    vocab = set(vocab[:MAX_VOCAB_SIZE])
+    vocab = sorted(list(vocab), key=lambda w: word_freq.get(w, 0), reverse=True)
+    vocab = vocab[:MAX_VOCAB_SIZE - len(special_tokens)]
 
-    dump = {"word_to_id": dict((c, i) for i, c in enumerate(itertools.chain(special_tokens, vocab))),
-            "id_to_word": dict((i, c) for i, c in enumerate(itertools.chain(special_tokens, vocab)))}
+    dump = {"word_to_id": {c: i for i, c in enumerate(itertools.chain(special_tokens, vocab))},
+            "id_to_word": {i: c for i, c in enumerate(itertools.chain(special_tokens, vocab))}}
     print("\nPickled vocab file.")
     pickle.dump(dump, open("vocab.pickle", 'wb'))
     return dump
@@ -164,7 +201,7 @@ def training_vector_generator():
         line_a = int("".join([s for s in line_a if s.isdigit()]))
         line_b = int("".join([s for s in line_b if s.isdigit()]))
 
-        if a_uter != b_uter and a_mov == b_mov and line_b == line_a + 1\
+        if a_uter != b_uter and a_mov == b_mov and line_b == line_a + 1 \
                 and len(a_text.split(" ")) <= SENTENCE_LEN_LIM \
                 and len(b_text.split(" ")) <= SENTENCE_LEN_LIM:
             q_and_a_lst.append((a_text.strip(), b_text.strip()))
@@ -176,7 +213,7 @@ def training_vector_generator():
             q_and_a_lst.append((question.strip(), answer.strip()))
 
     batch_number, doc_number = 0, 0
-    total_batch_count = int(np.ceil(len(q_and_a_lst)/BATCH_SIZE))
+    total_batch_count = int(np.ceil(len(q_and_a_lst) / BATCH_SIZE))
     np.random.shuffle(q_and_a_lst)
     queue = deque(q_and_a_lst)
 
@@ -196,7 +233,7 @@ def training_vector_generator():
             X_1[index] = vectorize(question)
 
             doc_number += 1
-            sys.stdout.write(f"\rVectorizing Training data {doc_number}/{2*len(q_and_a_lst)}")
+            sys.stdout.write(f"\rVectorizing Training data {doc_number}/{2 * len(q_and_a_lst)}")
             sys.stdout.flush()
 
         for index, answer in enumerate(answers):
@@ -206,7 +243,7 @@ def training_vector_generator():
             X_2[index] = np.array(vector)
 
             doc_number += 1
-            sys.stdout.write(f"\rVectorizing Training data {doc_number}/{2*len(q_and_a_lst)}")
+            sys.stdout.write(f"\rVectorizing Training data {doc_number}/{2 * len(q_and_a_lst)}")
             sys.stdout.flush()
 
         X_1 = sequence.pad_sequences(X_1, maxlen=N_in, padding='post')
