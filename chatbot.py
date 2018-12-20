@@ -1,3 +1,4 @@
+#!/usr/bin/sudo python
 import numpy as np
 import nltk
 import os
@@ -5,6 +6,7 @@ import sys
 import pickle
 import itertools
 import spacy
+import shutil
 from collections import deque
 from nltk.corpus import stopwords
 from keras.models import Model
@@ -65,7 +67,7 @@ class ChatBot:
     ENTITY_WORDS = pickle.load(open("ENTITY_WORDS.pickle", 'rb'))
     NLP = spacy.load('en')
 
-    def __init__(self, vocab_size, data_filename=None):
+    def __init__(self, n_in, n_out, sentence_limit, vocab_size, data_filename=None):
         # TODO: argparcer...
         if os.path.isfile("vocab.pickle") and not TRAIN_FIRST:
             try:
@@ -73,17 +75,28 @@ class ChatBot:
                 if len(data_vocab_dicts["word_to_id"]) != len(data_vocab_dicts["word_to_id"]):
                     raise ValueError("'vocab.pickle' dictionary lengths do not match.")
                 if len(data_vocab_dicts["word_to_id"]) != vocab_size:
-                    raise ValueError(f"'vocab.pickle' vocab size is not {vocab_size}.")
+                    raise ValueError("'vocab.pickle' vocab size is not {}.".format(vocab_size))
             except Exception as e:
-                print(f"Exception encountered when reading vocab data: {e}")
+                print("Exception encountered when reading vocab data: {}".format(e))
                 data_vocab_dicts = self._create_and_save_vocab(data_filename, vocab_size)
         else:
             data_vocab_dicts = self._create_and_save_vocab(data_filename, vocab_size)
 
+        self.data_filename = data_filename
+        self.n_in, self.n_out = n_in, n_out
         self.vocab_size = vocab_size
+        self.sentence_limit = sentence_limit
         self.word_to_id_dict = data_vocab_dicts["word_to_id"]
         self.id_to_word_dict = data_vocab_dicts["id_to_word"]
         self.encoder, self.decoder = None, None
+
+        if not os.path.exists("temp"):
+            os.makedirs("temp")
+
+        os.makedirs("temp/{}".format(self))
+
+    def __del__(self):
+        shutil.rmtree("temp/{}".format(self))
 
     def __bool__(self):
         return self.encoder is not None and self.decoder is not None \
@@ -96,7 +109,7 @@ class ChatBot:
         data is expected to come in the following form:
 
         5 Column separated by a tab character using the following column (in order):
-            lineID - characterID - movieID - char_name - text
+            <lineID>\t<characterID>\t<movieID>\t<char_name>\t<text>
 
         Vocab uses most frequent words first when truncating the vocab to
         fit the vocab size.
@@ -116,7 +129,7 @@ class ChatBot:
                 else:
                     word_freq[word] = 1
             i += 1
-            sys.stdout.write(f"\rCreating Vocab, parsing {i}/{len(data)} document lines.")
+            sys.stdout.write("\rCreating Vocab, parsing {}/{} document lines.".format(i, len(data)))
             sys.stdout.flush()
 
         alpha_vocab = set(filter(lambda w: w.isalpha(), word_freq.keys()))
@@ -133,6 +146,34 @@ class ChatBot:
         print("\nPickled vocab file.")
         pickle.dump(dump, open("vocab.pickle", 'wb'))
         return dump
+
+    @staticmethod
+    def _one_hot_encode_to_list(iterable, vocab_len):
+        """
+        Private method for decoder.
+
+        TODO: refactor decoder to not use this private method.
+        """
+        lst = []
+        for seq in iterable:
+            time_steps = []
+            for index in seq:
+                vector = [0 for _ in range(vocab_len)]
+                vector[index] = 1
+                time_steps.append(vector)
+            lst.append(time_steps)
+        return lst
+
+    @staticmethod
+    def _one_hot_encode_to_array(iterable, n, vocab_len):
+        """
+        Private method for train method.
+        """
+        encoding = np.zeros((len(iterable), n, vocab_len))
+        for i, seq in enumerate(iterable):
+            for j, index in enumerate(seq):
+                encoding[i, j, index] = 1
+        return encoding
 
     @staticmethod
     def _create_validation_split(X_1, X_2, Y, percentage):
@@ -171,7 +212,7 @@ class ChatBot:
         if any(x in ChatBot.ENTITY_WORDS for x in set(sentence_tokens)):
             for ent in ChatBot.NLP(sentence).ents:
                 for w in nltk.word_tokenize(ent.text):
-                    entity[w] = f"<{ent.label_}>"
+                    entity[w] = "<{}>".format(ent.label_)
 
         for i, word in enumerate(sentence_tokens):
             if word in entity:
@@ -181,10 +222,95 @@ class ChatBot:
             vector[i] = word_id
         return vector
 
-    def train(self, epoch, batch_size=32, split_percentage=0.35, verbose=False):
+    def create_training_generator(self, data_file, batch_size=32):
+        """
+        A generator that yields batches of one-hot encoded sentences for
+        the Seq2Seq model.
+
+        The training data (DATA_FILE) is expected to come in the following form:
+
+        5 Column separated by a tab character using the following column (in order):
+            <lineID>\t<characterID>\t<movieID>\t<char_name>\t<text>
+
+        Also, one-hot encoding comes from the vocab file (vocab.pickle).
+
+        :param data_file: The data file in the form described above.
+        :param batch_size: The size of the batch used in training.
+        """
+        q_and_a_lst = []
+
+        data = open(data_file, encoding='utf-8', errors='ignore').read().split('\n')
+        if not data[-1]:
+            data.pop()
+
+        for i in range(len(data) - 1):
+            line_a, a_uter, a_mov, _, a_text = data[i].split("\t")[:5]
+            line_b, b_uter, b_mov, _, b_text = data[i + 1].split("\t")[:5]
+            line_a = int("".join([s for s in line_a if s.isdigit()]))
+            line_b = int("".join([s for s in line_b if s.isdigit()]))
+
+            if a_uter != b_uter and a_mov == b_mov and line_b == line_a + 1 \
+                    and len(a_text.split(" ")) <= self.sentence_limit \
+                    and len(b_text.split(" ")) <= self.sentence_limit:
+                q_and_a_lst.append((a_text.strip(), b_text.strip()))
+
+        batch_number, doc_number = 0, 0
+        total_batch_count = int(np.ceil(len(q_and_a_lst) / batch_size))
+        np.random.shuffle(q_and_a_lst)
+        queue = deque(q_and_a_lst)
+
+        while queue:
+            batch_size = min(len(queue), batch_size)
+            lst = [queue.pop() for _ in range(batch_size)]
+
+            questions = map(lambda tup: tup[0], lst)
+            answers = map(lambda tup: tup[1], lst)
+
+            X_1 = np.empty((batch_size,), dtype=bytearray)
+            X_2 = np.empty((batch_size,), dtype=bytearray)
+            Y = np.empty((batch_size,), dtype=bytearray)
+
+            # Create training vectors from read data.
+            for index, question in enumerate(questions):
+                X_1[index] = self.vectorize(question)
+
+                doc_number += 1
+                sys.stdout.write("\rVectorizing Training data {}/{}".format(doc_number, 2 * len(q_and_a_lst)))
+                sys.stdout.flush()
+
+            for index, answer in enumerate(answers):
+                vector = self.vectorize(answer)
+                Y[index] = vector
+                vector = [self.word_to_id_dict["<START>"]] + list(vector)[:-1]
+                X_2[index] = np.array(vector)
+
+                doc_number += 1
+                sys.stdout.write("\rVectorizing Training data {}/{}".format(doc_number, 2 * len(q_and_a_lst)))
+                sys.stdout.flush()
+
+            X_1 = sequence.pad_sequences(X_1, maxlen=N_in, padding='post')
+            X_2 = sequence.pad_sequences(X_2, maxlen=N_out, padding='post')
+            Y = sequence.pad_sequences(Y, maxlen=N_out, padding='post')
+
+            encode_len = len(self.word_to_id_dict)
+            X_1 = self._one_hot_encode_to_array(X_1, N_in, encode_len)
+            X_2 = self._one_hot_encode_to_array(X_2, N_out, encode_len)
+            Y = self._one_hot_encode_to_array(Y, N_out, encode_len)
+
+            batch_number += 1
+
+            yield X_1, X_2, Y, "{}/{}".format(batch_number, total_batch_count)
+
+    def train(self, data_filename, epoch, batch_size=32, split_percentage=0.35, verbose=False):
         """
         Trains the chatbot's seq2seq encoder and decoder LSTMs.
 
+        The training data (DATA_FILENAME) is expected to come in the following form:
+
+        5 Column separated by a tab character using the following column (in order):
+            <lineID>\t<characterID>\t<movieID>\t<char_name>\t<text>
+
+        :param data_filename: the data being train on. Must follow format above.
         :param epoch: number of epochs in training.
         :param batch_size: size of the batch in training.
         :param split_percentage: value between 0 and 1, percentage of training
@@ -198,259 +324,59 @@ class ChatBot:
             print(model.summary())
         print("\n\n-==TRAINING=--\n")
         for ep in range(epoch):
-            # TODO: TRAINING FUNCTION BECAUSE IT WILL NOT WORK NOWN!!!!
-            for X_1, X_2, Y, batch_counter in training_vector_generator():
+            for X_1, X_2, Y, batch_counter in self.create_training_generator(data_filename, batch_size):
                 if verbose:
                     sys.stdout.flush()
                     sys.stdout.write('\x1b[2K')
-                    print(f"\rEpoch: {ep}/{EPOCHS}, Batch: {batch_counter}. \tTraining...")
-                X_1t, X_2t, Y_t, X_1v, X_2v, Y_v = create_validation_split(X_1, X_2, Y, split_percentage)
+                    print("\rEpoch: {}/{}, Batch: {}. \tTraining...".format(ep, epoch, batch_counter))
+                X_1t, X_2t, Y_t, X_1v, X_2v, Y_v = self._create_validation_split(X_1, X_2, Y, split_percentage)
                 model.fit([X_1t, X_2t], Y_t, epochs=1, batch_size=batch_size, validation_data=([X_1v, X_2v], Y_v))
         print("\nDone training, saved model to file.")
         encoder.save_weights("encoding_model.h5")
         decoder.save_weights("decoding_model.h5")
 
 
-def one_hot_encode_array(iterable, n, vocab_len):
-    encoding = np.zeros((len(iterable), n, vocab_len))
-    for i, seq in enumerate(iterable):
-        for j, index in enumerate(seq):
-            encoding[i, j, index] = 1
-    return encoding
-
-
-def one_hot_encode_list(iterable, vocab_len):
-    lst = []
-    for seq in iterable:
-        time_steps = []
-        for index in seq:
-            vector = [0 for _ in range(vocab_len)]
-            vector[index] = 1
-            time_steps.append(vector)
-        lst.append(time_steps)
-    return lst
-
-
-def create_vocab_file():
-    word_freq = {}
-
-    data_2 = open("movie_lines_filtered.tsv", encoding='utf-8', errors='ignore').read().split('\n')
-    i, total_length = 0, len(data_2)
-
-    for line in data_2:
-        if not line:
-            continue
-        for word in nltk.word_tokenize(line.split("\t")[4]):
-            if word in word_freq:
-                word_freq[word] += 1
-            else:
-                word_freq[word] = 1
-        i += 1
-        sys.stdout.write(f"\rCreating Vocab, parsing {i}/{total_length} document lines.")
-        sys.stdout.flush()
-
-    vocab = set(map(lambda w: w.lower(), set(filter(lambda w: w.isalpha(), word_freq.keys())) - ENTITY_WORDS))
-
-    ner_tokens = pickle.load(open("NER_TAGS_OF_DATA.pickle", 'rb'))
-    special_tokens = ["<PADD>", "<START>", "<UNK>"] + ner_tokens
-
-    vocab = sorted(list(vocab), key=lambda w: word_freq.get(w, 0), reverse=True)
-    vocab = vocab[:MAX_VOCAB_SIZE - len(special_tokens)]
-
-    dump = {"word_to_id": {c: i for i, c in enumerate(itertools.chain(special_tokens, vocab))},
-            "id_to_word": {i: c for i, c in enumerate(itertools.chain(special_tokens, vocab))}}
-    print("\nPickled vocab file.")
-    pickle.dump(dump, open("vocab.pickle", 'wb'))
-    return dump
-
-
-def vectorize(sentence, unk_token_id=None):
-    sentence = sentence.strip()
-    unk_token_id = unk_token_id if unk_token_id else WORD_TO_ID_DICT["<UNK>"]
-    sentence_tokens = np.array(list(filter(lambda s: s.isalpha(), nltk.word_tokenize(sentence))))
-    vector = np.zeros(len(sentence_tokens), dtype=int)
-
-    entity = {}
-    if any(x in ENTITY_WORDS for x in set(sentence_tokens)):
-        for ent in NLP(sentence).ents:
-            for w in nltk.word_tokenize(ent.text):
-                entity[w] = f"<{ent.label_}>"
-
-    for i, word in enumerate(sentence_tokens):
-        if word in entity:
-            word_id = WORD_TO_ID_DICT[entity[word]]
-        else:
-            word_id = WORD_TO_ID_DICT.get(word.lower(), unk_token_id)
-        vector[i] = word_id
-    return vector
-
-
-def training_vector_generator():
-    q_and_a_lst = []
-
-    data = open("movie_lines_filtered.tsv", encoding='utf-8', errors='ignore').read().split('\n')
-    data = [x for x in data if x]
-    for i in range(len(data) - 1):
-        line_a, a_uter, a_mov, _, a_text = data[i].split("\t")[:5]
-        line_b, b_uter, b_mov, _, b_text = data[i + 1].split("\t")[:5]
-        line_a = int("".join([s for s in line_a if s.isdigit()]))
-        line_b = int("".join([s for s in line_b if s.isdigit()]))
-
-        if a_uter != b_uter and a_mov == b_mov and line_b == line_a + 1 \
-                and len(a_text.split(" ")) <= SENTENCE_LEN_LIM \
-                and len(b_text.split(" ")) <= SENTENCE_LEN_LIM:
-            q_and_a_lst.append((a_text.strip(), b_text.strip()))
-
-    for line in open("dataset.txt", 'r').read().split("\n\n"):
-        question, answer = line.split("\n")
-        if len(question.split(" ")) <= SENTENCE_LEN_LIM \
-                and len(answer.split(" ")) <= SENTENCE_LEN_LIM:
-            q_and_a_lst.append((question.strip(), answer.strip()))
-
-    batch_number, doc_number = 0, 0
-    total_batch_count = int(np.ceil(len(q_and_a_lst) / BATCH_SIZE))
-    np.random.shuffle(q_and_a_lst)
-    queue = deque(q_and_a_lst)
-
-    while queue:
-        batch_size = min(len(queue), BATCH_SIZE)
-        lst = [queue.pop() for _ in range(batch_size)]
-
-        questions = map(lambda tup: tup[0], lst)
-        answers = map(lambda tup: tup[1], lst)
-
-        X_1 = np.empty((batch_size,), dtype=bytearray)
-        X_2 = np.empty((batch_size,), dtype=bytearray)
-        Y = np.empty((batch_size,), dtype=bytearray)
-
-        # Create training vectors from read data.
-        for index, question in enumerate(questions):
-            X_1[index] = vectorize(question)
-
-            doc_number += 1
-            sys.stdout.write(f"\rVectorizing Training data {doc_number}/{2 * len(q_and_a_lst)}")
-            sys.stdout.flush()
-
-        for index, answer in enumerate(answers):
-            vector = vectorize(answer)
-            Y[index] = vector
-            vector = [WORD_TO_ID_DICT["<START>"]] + list(vector)[:-1]
-            X_2[index] = np.array(vector)
-
-            doc_number += 1
-            sys.stdout.write(f"\rVectorizing Training data {doc_number}/{2 * len(q_and_a_lst)}")
-            sys.stdout.flush()
-
-        X_1 = sequence.pad_sequences(X_1, maxlen=N_in, padding='post')
-        X_2 = sequence.pad_sequences(X_2, maxlen=N_out, padding='post')
-        Y = sequence.pad_sequences(Y, maxlen=N_out, padding='post')
-
-        encode_len = len(WORD_TO_ID_DICT)
-        X_1 = one_hot_encode_array(X_1, N_in, encode_len)
-        X_2 = one_hot_encode_array(X_2, N_out, encode_len)
-        Y = one_hot_encode_array(Y, N_out, encode_len)
-
-        batch_number += 1
-
-        yield X_1, X_2, Y, f"{batch_number}/{total_batch_count}"
-
-
-def create_validation_split(X_1, X_2, Y, percentage=None):
-    percentage = percentage if percentage else VALIDATION_SPLIT
-    X_1t, X_2t, Y_t = [X_1[1]], [X_2[1]], [Y[1]]
-    X_1v, X_2v, Y_v = [X_1[0]], [X_2[0]], [Y[0]]
-    for i in range(2, X_1.shape[0]):
-        if np.random.uniform() < percentage:
-            X_1v.append(X_1[i])
-            X_2v.append(X_2[i])
-            Y_v.append(Y[i])
-        else:
-            X_1t.append(X_1[i])
-            X_2t.append(X_2[i])
-            Y_t.append(Y[i])
-    X_1t, X_2t, Y_t = np.array(X_1t), np.array(X_2t), np.array(Y_t)
-    X_1v, X_2v, Y_v = np.array(X_1v), np.array(X_2v), np.array(Y_v)
-    return X_1t, X_2t, Y_t, X_1v, X_2v, Y_v
-
-
-def train():
-    model, encoder, decoder = define_models(len(WORD_TO_ID_DICT), len(WORD_TO_ID_DICT), 128)
-    model.compile(optimizer='adam', loss='categorical_crossentropy')
-    print(model.summary())
-    print("\n\n-==TRAINING=--\n")
-    for ep in range(EPOCHS):
-        for X_1, X_2, Y, batch_counter in training_vector_generator():
-            sys.stdout.write('\x1b[2K')
-            print(f"\rEpoch: {ep}/{EPOCHS}, Batch: {batch_counter}. \tTraining...")
-            X_1t, X_2t, Y_t, X_1v, X_2v, Y_v = create_validation_split(X_1, X_2, Y)
-            sys.stdout.flush()
-            model.fit([X_1t, X_2t], Y_t, epochs=1,
-                      batch_size=BATCH_SIZE, validation_data=([X_1v, X_2v], Y_v))
-
-    print("\nDone training, saved model to file.")
-
-    encoder.save_weights("encoding_model.h5")
-    decoder.save_weights("decoding_model.h5")
-
-
-def load_encoder_decoder():
-    if TRAIN_FIRST or not os.path.isfile("encoding_model.h5") \
-            or not os.path.isfile("decoding_model.h5"):
-        train()
-    _, encoder, decoder = define_models(len(WORD_TO_ID_DICT), len(WORD_TO_ID_DICT), 128)
-    encoder.load_weights("encoding_model.h5")
-    decoder.load_weights("decoding_model.h5")
-    return encoder, decoder
-
-
-def process_input(input_line):
-    X_in = sequence.pad_sequences([vectorize(input_line)], maxlen=N_in, padding='post')
-    return np.array(one_hot_encode_list(X_in, len(WORD_TO_ID_DICT)))
-
-
-def predict(encoder, decoder, X_in, encode_len):
-    curr_in_state = encoder.predict(X_in)
-    curr_out_state = [np.array(one_hot_encode_list([[WORD_TO_ID_DICT["<START>"]]], encode_len))]
-    Y_hat = []
-    for t in range(N_in):
-        prediction, h, c = decoder.predict(curr_out_state + curr_in_state)
-        curr_in_state = [h, c]
-        curr_out_state = [prediction]
-        Y_hat.append(prediction)
-    return np.array(Y_hat)
-
-
-def vector_to_words(vector):
-    words = []
-    for el in vector:
-        word_id = np.argmax(el)  # Fetch index that has 1 as element.
-        word = ID_TO_WORD_DICT.get(word_id, "<UNK>")
-        if word == "<PADD>":
-            return " ".join(words)
-        words.append(word)
-    return " ".join(words)
+# def load_encoder_decoder():
+#     if TRAIN_FIRST or not os.path.isfile("encoding_model.h5") \
+#             or not os.path.isfile("decoding_model.h5"):
+#         train()
+#     _, encoder, decoder = define_models(len(WORD_TO_ID_DICT), len(WORD_TO_ID_DICT), 128)
+#     encoder.load_weights("encoding_model.h5")
+#     decoder.load_weights("decoding_model.h5")
+#     return encoder, decoder
+#
+#
+# def process_input(input_line):
+#     X_in = sequence.pad_sequences([vectorize(input_line)], maxlen=N_in, padding='post')
+#     return np.array(one_hot_encode_to_list(X_in, len(WORD_TO_ID_DICT)))
+#
+#
+# def predict(encoder, decoder, X_in, encode_len):
+#     curr_in_state = encoder.predict(X_in)
+#     curr_out_state = [np.array(one_hot_encode_to_list([[WORD_TO_ID_DICT["<START>"]]], encode_len))]
+#     Y_hat = []
+#     for t in range(N_in):
+#         prediction, h, c = decoder.predict(curr_out_state + curr_in_state)
+#         curr_in_state = [h, c]
+#         curr_out_state = [prediction]
+#         Y_hat.append(prediction)
+#     return np.array(Y_hat)
+#
+#
+# def vector_to_words(vector):
+#     words = []
+#     for el in vector:
+#         word_id = np.argmax(el)  # Fetch index that has 1 as element.
+#         word = ID_TO_WORD_DICT.get(word_id, "<UNK>")
+#         if word == "<PADD>":
+#             return " ".join(words)
+#         words.append(word)
+#     return " ".join(words)
 
 
 def main():
-    global ID_TO_WORD_DICT, WORD_TO_ID_DICT
-
-    if os.path.isfile("vocab.pickle") and not TRAIN_FIRST:
-        vocab_data = pickle.load(open("vocab.pickle", 'rb'))
-    else:
-        vocab_data = create_vocab_file()
-
-    WORD_TO_ID_DICT, ID_TO_WORD_DICT = vocab_data["word_to_id"], vocab_data["id_to_word"]
-
-    encoder, decoder = load_encoder_decoder()
-
-    print("Chat Bot ready, type anything to start:")
-    while True:
-        sys.stdout.write(">")
-        sys.stdout.flush()
-        X_in = process_input(input())
-        Y_hat = predict(encoder, decoder, X_in, len(WORD_TO_ID_DICT))
-        print("Response: {}".format(vector_to_words(Y_hat)))
-        print(" ")
+    chat_bot = ChatBot(10, 20, 15, 9000, "movie_lines_filtered.tsv")
+    chat_bot.train("movie_lines_filtered.tsv", 100, verbose=True)
 
 
 if __name__ == "__main__":
