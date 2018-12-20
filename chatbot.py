@@ -15,23 +15,6 @@ from keras.layers import LSTM
 from keras.layers import Dense
 from keras.preprocessing import sequence
 
-# Globals (can be modified)
-TRAIN_FIRST = False
-N_in = 10
-N_out = 20
-EPOCHS = 100
-SENTENCE_LEN_LIM = 15  # in token counts.
-MAX_VOCAB_SIZE = 10000
-VALIDATION_SPLIT = 0.35
-BATCH_SIZE = 128
-
-# TODO: || it to train bigger models quicker... also maybe do some cleanup to make it ezer to run.
-
-WORD_TO_ID_DICT = {}
-ID_TO_WORD_DICT = {}
-ENTITY_WORDS = pickle.load(open("ENTITY_WORDS.pickle", 'rb'))
-NLP = spacy.load('en')
-
 
 def define_models(n_input, n_output, n_units):
     """
@@ -67,9 +50,8 @@ class ChatBot:
     ENTITY_WORDS = pickle.load(open("ENTITY_WORDS.pickle", 'rb'))
     NLP = spacy.load('en')
 
-    def __init__(self, n_in, n_out, sentence_limit, vocab_size, data_filename=None):
-        # TODO: argparcer...
-        if os.path.isfile("vocab.pickle") and not TRAIN_FIRST:
+    def __init__(self, n_in, n_out, sentence_limit, vocab_size, vocab_filename, vocab_update=False):
+        if os.path.isfile("vocab.pickle") and not vocab_update:
             try:
                 data_vocab_dicts = pickle.load(open("vocab.pickle", 'rb'))
                 if len(data_vocab_dicts["word_to_id"]) != len(data_vocab_dicts["word_to_id"]):
@@ -78,11 +60,10 @@ class ChatBot:
                     raise ValueError("'vocab.pickle' vocab size is not {}.".format(vocab_size))
             except Exception as e:
                 print("Exception encountered when reading vocab data: {}".format(e))
-                data_vocab_dicts = self._create_and_save_vocab(data_filename, vocab_size)
+                data_vocab_dicts = self._create_and_save_vocab(vocab_filename, vocab_size)
         else:
-            data_vocab_dicts = self._create_and_save_vocab(data_filename, vocab_size)
+            data_vocab_dicts = self._create_and_save_vocab(vocab_filename, vocab_size)
 
-        self.data_filename = data_filename
         self.n_in, self.n_out = n_in, n_out
         self.vocab_size = vocab_size
         self.sentence_limit = sentence_limit
@@ -99,8 +80,7 @@ class ChatBot:
         shutil.rmtree("temp/{}".format(self))
 
     def __bool__(self):
-        return self.encoder is not None and self.decoder is not None \
-               and not self.word_to_id_dict and not self.id_to_word_dict
+        return self.encoder is not None and self.decoder is not None
 
     @staticmethod
     def _create_and_save_vocab(filename, vocab_size):
@@ -113,6 +93,8 @@ class ChatBot:
 
         Vocab uses most frequent words first when truncating the vocab to
         fit the vocab size.
+
+        # TODO: more robust vocab method to handel plain words instead of just 5 col.
 
         :param filename: file name of training data used to generate dict.
         :param vocab_size: the fixed size of the vocab.
@@ -168,6 +150,8 @@ class ChatBot:
     def _one_hot_encode_to_array(iterable, n, vocab_len):
         """
         Private method for train method.
+
+        TODO: DOCS
         """
         encoding = np.zeros((len(iterable), n, vocab_len))
         for i, seq in enumerate(iterable):
@@ -179,6 +163,8 @@ class ChatBot:
     def _create_validation_split(X_1, X_2, Y, percentage):
         """
         Private method for train method.
+
+        TODO: DOCS
         """
         X_1t, X_2t, Y_t = [X_1[1]], [X_2[1]], [Y[1]]
         X_1v, X_2v, Y_v = [X_1[0]], [X_2[0]], [Y[0]]
@@ -288,14 +274,14 @@ class ChatBot:
                 sys.stdout.write("\rVectorizing Training data {}/{}".format(doc_number, 2 * len(q_and_a_lst)))
                 sys.stdout.flush()
 
-            X_1 = sequence.pad_sequences(X_1, maxlen=N_in, padding='post')
-            X_2 = sequence.pad_sequences(X_2, maxlen=N_out, padding='post')
-            Y = sequence.pad_sequences(Y, maxlen=N_out, padding='post')
+            X_1 = sequence.pad_sequences(X_1, maxlen=self.n_in, padding='post')
+            X_2 = sequence.pad_sequences(X_2, maxlen=self.n_out, padding='post')
+            Y = sequence.pad_sequences(Y, maxlen=self.n_out, padding='post')
 
             encode_len = len(self.word_to_id_dict)
-            X_1 = self._one_hot_encode_to_array(X_1, N_in, encode_len)
-            X_2 = self._one_hot_encode_to_array(X_2, N_out, encode_len)
-            Y = self._one_hot_encode_to_array(Y, N_out, encode_len)
+            X_1 = self._one_hot_encode_to_array(X_1, self.n_in, encode_len)
+            X_2 = self._one_hot_encode_to_array(X_2, self.n_out, encode_len)
+            Y = self._one_hot_encode_to_array(Y, self.n_out, encode_len)
 
             batch_number += 1
 
@@ -334,6 +320,7 @@ class ChatBot:
         print("\nDone training, saved model to file.")
         encoder.save_weights("encoding_model.h5")
         decoder.save_weights("decoding_model.h5")
+        # TODO: Backup and save weights and vocab.
 
 
 # def load_encoder_decoder():
@@ -375,6 +362,13 @@ class ChatBot:
 
 
 def main():
+    # TODO: ARGPARCER
+    # TODO: DECODER & EXIT
+    # TODO: TEST ON SIMPLE DEV DATA
+    # TODO: FILE WRITE / READ BATCH GENERATOR.
+    # TODO: Documentation
+    # TODO: First Time installer...
+    # TODO: publish README...
     chat_bot = ChatBot(10, 20, 15, 9000, "movie_lines_filtered.tsv")
     chat_bot.train("movie_lines_filtered.tsv", 100, verbose=True)
 
