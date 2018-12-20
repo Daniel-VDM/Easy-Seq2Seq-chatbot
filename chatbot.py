@@ -62,16 +62,32 @@ def define_models(n_input, n_output, n_units):
 
 
 class ChatBot:
-    WORD_TO_ID_DICT = {}
-    ID_TO_WORD_DICT = {}
     ENTITY_WORDS = pickle.load(open("ENTITY_WORDS.pickle", 'rb'))
     NLP = spacy.load('en')
 
-    def __init__(self, vocab_filename=None):
+    def __init__(self, vocab_size, data_filename=None):
         # TODO: argparcer...
-        if vocab_filename:
-            # TODO: validation check here.
-            pass
+        if os.path.isfile("vocab.pickle") and not TRAIN_FIRST:
+            try:
+                data_vocab_dicts = pickle.load(open("vocab.pickle", 'rb'))
+                if len(data_vocab_dicts["word_to_id"]) != len(data_vocab_dicts["word_to_id"]):
+                    raise ValueError("'vocab.pickle' dictionary lengths do not match.")
+                if len(data_vocab_dicts["word_to_id"]) != vocab_size:
+                    raise ValueError(f"'vocab.pickle' vocab size is not {vocab_size}.")
+            except Exception as e:
+                print(f"Exception encountered when reading vocab data: {e}")
+                data_vocab_dicts = self._create_and_save_vocab(data_filename, vocab_size)
+        else:
+            data_vocab_dicts = self._create_and_save_vocab(data_filename, vocab_size)
+
+        self.vocab_size = vocab_size
+        self.word_to_id_dict = data_vocab_dicts["word_to_id"]
+        self.id_to_word_dict = data_vocab_dicts["id_to_word"]
+        self.encoder, self.decoder = None, None
+
+    def __bool__(self):
+        return self.encoder is not None and self.decoder is not None \
+               and not self.word_to_id_dict and not self.id_to_word_dict
 
     @staticmethod
     def _create_and_save_vocab(filename, vocab_size):
@@ -81,6 +97,9 @@ class ChatBot:
 
         5 Column separated by a tab character using the following column (in order):
             lineID - characterID - movieID - char_name - text
+
+        Vocab uses most frequent words first when truncating the vocab to
+        fit the vocab size.
 
         :param filename: file name of training data used to generate dict.
         :param vocab_size: the fixed size of the vocab.
@@ -114,6 +133,82 @@ class ChatBot:
         print("\nPickled vocab file.")
         pickle.dump(dump, open("vocab.pickle", 'wb'))
         return dump
+
+    @staticmethod
+    def _create_validation_split(X_1, X_2, Y, percentage):
+        """
+        Private method for train method.
+        """
+        X_1t, X_2t, Y_t = [X_1[1]], [X_2[1]], [Y[1]]
+        X_1v, X_2v, Y_v = [X_1[0]], [X_2[0]], [Y[0]]
+        for i in range(2, X_1.shape[0]):
+            if np.random.uniform() < percentage:
+                X_1v.append(X_1[i])
+                X_2v.append(X_2[i])
+                Y_v.append(Y[i])
+            else:
+                X_1t.append(X_1[i])
+                X_2t.append(X_2[i])
+                Y_t.append(Y[i])
+        X_1t, X_2t, Y_t = np.array(X_1t), np.array(X_2t), np.array(Y_t)
+        X_1v, X_2v, Y_v = np.array(X_1v), np.array(X_2v), np.array(Y_v)
+        return X_1t, X_2t, Y_t, X_1v, X_2v, Y_v
+
+    def vectorize(self, sentence):
+        """
+        Note that this is NOT one-hot encoded. Instead, it returns a vector where
+        each entry is a word ID, and said entry corresponds to token index of sentence.
+
+        :param sentence: A string that is to be vectorized.
+        :return: an encoding/vector (using this objects vocab) of the sentence.
+        """
+        sentence = sentence.strip()
+        unk_token_id = self.word_to_id_dict["<UNK>"]
+        sentence_tokens = np.array(list(filter(lambda s: s.isalpha(), nltk.word_tokenize(sentence))))
+        vector = np.zeros(len(sentence_tokens), dtype=int)
+
+        entity = {}
+        if any(x in ChatBot.ENTITY_WORDS for x in set(sentence_tokens)):
+            for ent in ChatBot.NLP(sentence).ents:
+                for w in nltk.word_tokenize(ent.text):
+                    entity[w] = f"<{ent.label_}>"
+
+        for i, word in enumerate(sentence_tokens):
+            if word in entity:
+                word_id = self.word_to_id_dict[entity[word]]
+            else:
+                word_id = self.word_to_id_dict.get(word.lower(), unk_token_id)
+            vector[i] = word_id
+        return vector
+
+    def train(self, epoch, batch_size=32, split_percentage=0.35, verbose=False):
+        """
+        Trains the chatbot's seq2seq encoder and decoder LSTMs.
+
+        :param epoch: number of epochs in training.
+        :param batch_size: size of the batch in training.
+        :param split_percentage: value between 0 and 1, percentage of training
+            data held out for validation.
+        :param verbose: update messages during training.
+        :return:
+        """
+        model, encoder, decoder = define_models(len(self.word_to_id_dict), len(self.id_to_word_dict), 128)
+        model.compile(optimizer='adam', loss='categorical_crossentropy')
+        if verbose:
+            print(model.summary())
+        print("\n\n-==TRAINING=--\n")
+        for ep in range(epoch):
+            # TODO: TRAINING FUNCTION BECAUSE IT WILL NOT WORK NOWN!!!!
+            for X_1, X_2, Y, batch_counter in training_vector_generator():
+                if verbose:
+                    sys.stdout.flush()
+                    sys.stdout.write('\x1b[2K')
+                    print(f"\rEpoch: {ep}/{EPOCHS}, Batch: {batch_counter}. \tTraining...")
+                X_1t, X_2t, Y_t, X_1v, X_2v, Y_v = create_validation_split(X_1, X_2, Y, split_percentage)
+                model.fit([X_1t, X_2t], Y_t, epochs=1, batch_size=batch_size, validation_data=([X_1v, X_2v], Y_v))
+        print("\nDone training, saved model to file.")
+        encoder.save_weights("encoding_model.h5")
+        decoder.save_weights("decoding_model.h5")
 
 
 def one_hot_encode_array(iterable, n, vocab_len):
