@@ -1,4 +1,3 @@
-#!/usr/bin/sudo python
 import numpy as np
 import nltk
 import os
@@ -7,8 +6,8 @@ import pickle
 import itertools
 import spacy
 import shutil
+from optparse import OptionParser
 from collections import deque
-from nltk.corpus import stopwords
 from keras.models import Model
 from keras.layers import Input
 from keras.layers import LSTM
@@ -50,14 +49,14 @@ class ChatBot:
     ENTITY_WORDS = pickle.load(open("ENTITY_WORDS.pickle", 'rb'))
     NLP = spacy.load('en')
 
-    def __init__(self, n_in, n_out, sentence_limit, vocab_size, vocab_filename, vocab_update=False):
-        if os.path.isfile("vocab.pickle") and not vocab_update:
+    def __init__(self, n_in, n_out, vocab_size, vocab_filename, use_cached_vocab=False):
+        if os.path.isfile("cached_vocab.pickle") and use_cached_vocab:
             try:
-                data_vocab_dicts = pickle.load(open("vocab.pickle", 'rb'))
+                data_vocab_dicts = pickle.load(open("cached_vocab.pickle", 'rb'))
                 if len(data_vocab_dicts["word_to_id"]) != len(data_vocab_dicts["word_to_id"]):
-                    raise ValueError("'vocab.pickle' dictionary lengths do not match.")
+                    raise ValueError("'cached_vocab.pickle' dictionary lengths do not match.")
                 if len(data_vocab_dicts["word_to_id"]) != vocab_size:
-                    raise ValueError("'vocab.pickle' vocab size is not {}.".format(vocab_size))
+                    raise ValueError("'cached_vocab.pickle' vocab size is not {}.".format(vocab_size))
             except Exception as e:
                 print("Exception encountered when reading vocab data: {}".format(e))
                 data_vocab_dicts = self._create_and_save_vocab(vocab_filename, vocab_size)
@@ -66,18 +65,13 @@ class ChatBot:
 
         self.n_in, self.n_out = n_in, n_out
         self.vocab_size = vocab_size
-        self.sentence_limit = sentence_limit
         self.word_to_id_dict = data_vocab_dicts["word_to_id"]
         self.id_to_word_dict = data_vocab_dicts["id_to_word"]
         self.encoder, self.decoder = None, None
 
-        if not os.path.exists("temp"):
-            os.makedirs("temp")
-
-        os.makedirs("temp/{}".format(self))
-
     def __del__(self):
-        shutil.rmtree("temp/{}".format(self))
+        if os.path.exists("temp/{}".format(self)):
+            shutil.rmtree("temp/{}".format(self))
 
     def __bool__(self):
         return self.encoder is not None and self.decoder is not None
@@ -125,8 +119,8 @@ class ChatBot:
 
         dump = {"word_to_id": {c: i for i, c in enumerate(itertools.chain(special_tokens, vocab))},
                 "id_to_word": {i: c for i, c in enumerate(itertools.chain(special_tokens, vocab))}}
-        print("\nPickled vocab file.")
-        pickle.dump(dump, open("vocab.pickle", 'wb'))
+        print("\nCached vocab file.")
+        pickle.dump(dump, open("cached_vocab.pickle", 'wb'))
         return dump
 
     @staticmethod
@@ -208,7 +202,7 @@ class ChatBot:
             vector[i] = word_id
         return vector
 
-    def create_training_generator(self, data_file, batch_size=32):
+    def create_training_generator(self, data_file, sentence_limit, batch_size=32):
         """
         A generator that yields batches of one-hot encoded sentences for
         the Seq2Seq model.
@@ -218,9 +212,10 @@ class ChatBot:
         5 Column separated by a tab character using the following column (in order):
             <lineID>\t<characterID>\t<movieID>\t<char_name>\t<text>
 
-        Also, one-hot encoding comes from the vocab file (vocab.pickle).
+        Also, one-hot encoding comes from the vocab dictionaries.
 
         :param data_file: The data file in the form described above.
+        :param sentence_limit: The sentence limit for all sentences in the training data.
         :param batch_size: The size of the batch used in training.
         """
         q_and_a_lst = []
@@ -236,8 +231,8 @@ class ChatBot:
             line_b = int("".join([s for s in line_b if s.isdigit()]))
 
             if a_uter != b_uter and a_mov == b_mov and line_b == line_a + 1 \
-                    and len(a_text.split(" ")) <= self.sentence_limit \
-                    and len(b_text.split(" ")) <= self.sentence_limit:
+                    and len(a_text.split(" ")) <= sentence_limit \
+                    and len(b_text.split(" ")) <= sentence_limit:
                 q_and_a_lst.append((a_text.strip(), b_text.strip()))
 
         batch_number, doc_number = 0, 0
@@ -287,7 +282,7 @@ class ChatBot:
 
             yield X_1, X_2, Y, "{}/{}".format(batch_number, total_batch_count)
 
-    def train(self, data_filename, epoch, batch_size=32, split_percentage=0.35, verbose=False):
+    def train(self, data_filename, sentence_length_limit, epoch, batch_size=32, split_percentage=0.35, verbose=False):
         """
         Trains the chatbot's seq2seq encoder and decoder LSTMs.
 
@@ -297,12 +292,12 @@ class ChatBot:
             <lineID>\t<characterID>\t<movieID>\t<char_name>\t<text>
 
         :param data_filename: the data being train on. Must follow format above.
+        :param sentence_length_limit: the max length of a sentence used in training.
         :param epoch: number of epochs in training.
         :param batch_size: size of the batch in training.
         :param split_percentage: value between 0 and 1, percentage of training
             data held out for validation.
         :param verbose: update messages during training.
-        :return:
         """
         model, encoder, decoder = define_models(len(self.word_to_id_dict), len(self.id_to_word_dict), 128)
         model.compile(optimizer='adam', loss='categorical_crossentropy')
@@ -310,68 +305,166 @@ class ChatBot:
             print(model.summary())
         print("\n\n-==TRAINING=--\n")
         for ep in range(epoch):
-            for X_1, X_2, Y, batch_counter in self.create_training_generator(data_filename, batch_size):
+            batch_gen = self.create_training_generator(data_file=data_filename,
+                                                       batch_size=batch_size,
+                                                       sentence_limit=sentence_length_limit)
+            for X_1, X_2, Y, batch_counter in batch_gen:
                 if verbose:
                     sys.stdout.flush()
                     sys.stdout.write('\x1b[2K')
                     print("\rEpoch: {}/{}, Batch: {}. \tTraining...".format(ep, epoch, batch_counter))
                 X_1t, X_2t, Y_t, X_1v, X_2v, Y_v = self._create_validation_split(X_1, X_2, Y, split_percentage)
-                model.fit([X_1t, X_2t], Y_t, epochs=1, batch_size=batch_size, validation_data=([X_1v, X_2v], Y_v))
-        print("\nDone training, saved model to file.")
-        encoder.save_weights("encoding_model.h5")
-        decoder.save_weights("decoding_model.h5")
-        # TODO: Backup and save weights and vocab (time stamp that shit)
+                model.fit([X_1t, X_2t], Y_t, epochs=1, batch_size=batch_size,
+                          validation_data=([X_1v, X_2v], Y_v), verbose=verbose)
+        self.encoder = encoder
+        self.decoder = decoder
+
+    def _predict(self, X_in):
+        """ Private method used for main chat loop.
+        """
+        curr_in_state = self.encoder.predict(X_in)
+        curr_out_state = [
+            np.array(self._one_hot_encode_to_list([[self.word_to_id_dict["<START>"]]], len(self.word_to_id_dict)))
+        ]
+        Y_hat = []
+        for t in range(self.n_in):
+            prediction, h, c = self.decoder.predict(curr_out_state + curr_in_state)
+            curr_in_state = [h, c]
+            curr_out_state = [prediction]
+            Y_hat.append(prediction)
+        return np.array(Y_hat)
+
+    def _vector_to_words(self, vector):
+        """ Private method used for main chat loop.
+        """
+        words = []
+        for el in vector:
+            word_id = np.argmax(el)  # Fetch index that has 1 as element.
+            word = self.id_to_word_dict.get(word_id, "<UNK>")
+            if word == "<PADD>":
+                return " ".join(words)
+            words.append(word)
+        return " ".join(words)
+
+    def chat(self):
+        """ Main chat loop with the chatbot.
+        """
+        if not self:
+            raise RuntimeError("Attempted to chat with an untrained model.")
+        print("Chat Bot ready, type anything to start:")
+        while True:
+            sys.stdout.write(">")
+            sys.stdout.flush()
+            input_str = input()
+            vocab_encoded_X_in = sequence.pad_sequences([self.vectorize(input_str)], maxlen=self.n_in, padding='post')
+            X_in = np.array(self._one_hot_encode_to_list(vocab_encoded_X_in, len(self.word_to_id_dict)))
+            Y_hat = self._predict(X_in)
+            print("Response: {}".format(self._vector_to_words(Y_hat)))
+            print(" ")
 
 
-# def load_encoder_decoder():
-#     if TRAIN_FIRST or not os.path.isfile("encoding_model.h5") \
-#             or not os.path.isfile("decoding_model.h5"):
-#         train()
-#     _, encoder, decoder = define_models(len(WORD_TO_ID_DICT), len(WORD_TO_ID_DICT), 128)
-#     encoder.load_weights("encoding_model.h5")
-#     decoder.load_weights("decoding_model.h5")
-#     return encoder, decoder
-#
-#
-# def process_input(input_line):
-#     X_in = sequence.pad_sequences([vectorize(input_line)], maxlen=N_in, padding='post')
-#     return np.array(one_hot_encode_to_list(X_in, len(WORD_TO_ID_DICT)))
-#
-#
-# def predict(encoder, decoder, X_in, encode_len):
-#     curr_in_state = encoder.predict(X_in)
-#     curr_out_state = [np.array(one_hot_encode_to_list([[WORD_TO_ID_DICT["<START>"]]], encode_len))]
-#     Y_hat = []
-#     for t in range(N_in):
-#         prediction, h, c = decoder.predict(curr_out_state + curr_in_state)
-#         curr_in_state = [h, c]
-#         curr_out_state = [prediction]
-#         Y_hat.append(prediction)
-#     return np.array(Y_hat)
-#
-#
-# def vector_to_words(vector):
-#     words = []
-#     for el in vector:
-#         word_id = np.argmax(el)  # Fetch index that has 1 as element.
-#         word = ID_TO_WORD_DICT.get(word_id, "<UNK>")
-#         if word == "<PADD>":
-#             return " ".join(words)
-#         words.append(word)
-#     return " ".join(words)
+def get_options():
+    opts = OptionParser()
+    opts.add_option('-i', '--N_in', dest='N_in', type=int, default=10,
+                    help="The number of time steps for the encoder. Default = 10.")
+    opts.add_option('-o', '--N_out', dest='N_out', type=int, default=20,
+                    help="The number of time setps for the decoder. Default = 20.")
+    opts.add_option('-v', '--vocab_size', dest='vocab_size', type=int, default=10000,
+                    help='The size of the vocab of the Chatbot. Default = 10000')
+    opts.add_option('-V', '--vocab_file', dest='vocab_file', type=str, default="movie_lines_filtered.tsv",
+                    help="The directory of the file that is used to define the vocab. "
+                         "It can be the training data or it can be a list of words that "
+                         "define the vocab. Check for the vocab size if a list of words is used."
+                         "Default = 'movie_lines_filtered.tsv'")
+    opts.add_option("-C", '--use_cached_vocab', action="store_true", dest="use_cached_vocab",
+                    help="Toggles the use of a cached_vocab instead of recreating the vocab."
+                         " (Cached vocab is saved as 'cached_vocab.pickle' in script's dir).")
+    opts.add_option("-S", '--save', action="store_true", dest="save_model",
+                    help="Saves the model and respective vocab after it is trained.")
+    opts.add_option("-M", '--verbose', action="store_true", dest="verbose",
+                    help="Toggles verbose on.")
+    opts.add_option('-d', '--data_file', dest='data_file', type=str, default="movie_lines_filtered.tsv",
+                    help="The directory of the file that is used to train the model. "
+                         "As of now, it can only support files that have the same 5 column format"
+                         "as data from Cornell's Movie-Dialogs data-set. Default = 'movie_lines_filtered.tsv'")
+    opts.add_option('-L', '--sentence_length_limit', dest='sentence_length_limit', type=int, default=20,
+                    help="The max (token) length of all sentences in the data used for training. "
+                         "Default = 20.")
+    opts.add_option('-e', '--epoch', dest='epoch', type=int, default=500,
+                    help="The number of epochs for training. Default = 100.")
+    opts.add_option('-b', '--batch_size', dest='batch_size', type=int, default=32,
+                    help="The batch size for training. Default = 32.")
+    opts.add_option('-s', '--split', dest='split', type=float, default=0.35,
+                    help="The percentage (val between 0 - 1) of data held out for validation. "
+                         "Default = 0.35")
+    return opts.parse_args()[0]
 
 
-def main():
-    # TODO: ARGPARCER
-    # TODO: DECODER & EXIT
-    # TODO: TEST ON SIMPLE DEV DATA
-    # TODO: FILE WRITE / READ BATCH GENERATOR.
-    # TODO: Documentation
-    # TODO: First Time installer...
-    # TODO: publish README...
-    chat_bot = ChatBot(10, 20, 15, 9000, "movie_lines_filtered.tsv")
-    chat_bot.train("movie_lines_filtered.tsv", 100, verbose=True)
+def get_saved_model_dir():
+    saved_models = os.listdir("saved_models")
+    if len(saved_models) == 0:
+        print("There are no saved models.")
+        return None
+    if len(saved_models) == 1:
+        return saved_models[0]
+    print("Which model would you like to load? (Type out choice below)")
+    print(f"  List of saved models:\n\t{saved_models}")
+    saved_models_set = set(saved_models)
+    while True:
+        sys.stdout.write("\r>")
+        sys.stdout.flush()
+        choice = input()
+        if choice in saved_models_set:
+            return choice
+        print(f"'{choice}' is invalid. Choose a valid model from the list of saved models.")
 
 
 if __name__ == "__main__":
-    main()
+    # TODO: FILE WRITE / READ BATCH GENERATOR.
+    # TODO: refactor for efficientcy and clenlyness.
+    # TODO: Documentation
+    # TODO: First Time installer...
+    # TODO: publish README...
+    opts = get_options()
+    if not os.path.exists("temp"):
+        os.makedirs("temp")
+    if not os.path.exists("saved_models"):
+        os.makedirs("saved_models")
+
+    sys.stdout.write("\rLoad a saved model? (y/n) ")
+    sys.stdout.flush()
+    user_input = input()
+
+    saved_model_dir = get_saved_model_dir() if user_input[0].lower() == 'y' else None
+
+    if saved_model_dir is not None:
+        chat_bot = pickle.load(open(f"saved_models/{saved_model_dir}/chatbot.pickle", 'rb'))
+        print(f"\nLoaded model: {saved_model_dir}")
+    else:
+        new_model_name = None
+
+        sys.stdout.write("\rSave the newly trained model? (y/n) ")
+        sys.stdout.flush()
+        user_input = input()
+
+        if user_input[0].lower() == 'y':
+            sys.stdout.write("\r(Required) Name of newly trained model? ")
+            sys.stdout.flush()
+            new_model_name = input()
+
+        chat_bot = ChatBot(opts.N_in, opts.N_out, opts.vocab_size, opts.vocab_file, opts.use_cached_vocab)
+        chat_bot.train(opts.data_file, opts.sentence_length_limit,
+                       opts.epoch, opts.batch_size, opts.split, opts.verbose)
+
+        if new_model_name:
+            if not os.path.exists(f"saved_models/{new_model_name}"):
+                os.mkdir(f"saved_models/{new_model_name}")
+            pickle.dump(chat_bot, open(f"saved_models/{new_model_name}/chatbot.pickle", 'wb'))
+            if not os.path.exists(f"saved_models/{new_model_name}/backup"):
+                os.mkdir(f"saved_models/{new_model_name}/backup")
+            chat_bot.encoder.save_weights(f"saved_models/{new_model_name}/backup/encoder.h5")
+            chat_bot.decoder.save_weights(f"saved_models/{new_model_name}/backup/decoder.h5")
+            pickle.dump({"word_to_id": chat_bot.word_to_id_dict, "id_to_word": chat_bot.id_to_word_dict},
+                        open(f"saved_models/{new_model_name}/backup/cached_vocab.pickle", 'wb'))
+            print(f"\nSaved the trained model to: 'saved_models/{new_model_name}'.")
+    chat_bot.chat()
