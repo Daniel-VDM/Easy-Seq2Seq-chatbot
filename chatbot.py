@@ -6,6 +6,7 @@ import pickle
 import itertools
 import spacy
 import shutil
+import json
 from optparse import OptionParser
 from collections import deque
 from keras.models import Model
@@ -13,6 +14,8 @@ from keras.layers import Input
 from keras.layers import LSTM
 from keras.layers import Dense
 from keras.preprocessing import sequence
+
+NLP = spacy.load('en')
 
 
 def define_models(n_input, n_output, n_units):
@@ -44,10 +47,12 @@ def define_models(n_input, n_output, n_units):
     # return all models
     return model, encoder_model, decoder_model
 
+# DO THIS NEXT!!!!!!!!!!!!!!!!!!!
+# TODO: CHANGE VOCAB / TRAINING DATA TO USE JSON FILES
+# Cornell_Movie_Dialogs_Data.json
+
 
 class ChatBot:
-    ENTITY_WORDS = pickle.load(open("ENTITY_WORDS.pickle", 'rb'))
-    NLP = spacy.load('en')
 
     def __init__(self, n_in, n_out, vocab_size, vocab_filename, use_cached_vocab=False):
         if os.path.isfile("cached_vocab.pickle") and use_cached_vocab:
@@ -76,6 +81,8 @@ class ChatBot:
     def __bool__(self):
         return self.encoder is not None and self.decoder is not None
 
+    # TODO: REMOVE 5 COL DEPENDANCE AND USE THE NEW JSON FILE.
+
     @staticmethod
     def _create_and_save_vocab(filename, vocab_size):
         """
@@ -88,6 +95,7 @@ class ChatBot:
         Vocab uses most frequent words first when truncating the vocab to
         fit the vocab size.
 
+        # TODO: NER FILTERING THAT IS CORRECT. and NOT use 5 col!!!
         # TODO: more robust vocab method to handel plain words instead of just 5 col.
 
         :param filename: file name of training data used to generate dict.
@@ -109,9 +117,9 @@ class ChatBot:
             sys.stdout.flush()
 
         alpha_vocab = set(filter(lambda w: w.isalpha(), word_freq.keys()))
-        vocab = set(map(lambda w: w.lower(), alpha_vocab - ChatBot.ENTITY_WORDS))
+        vocab = set(map(lambda w: w.lower(), alpha_vocab))
 
-        ner_tokens = pickle.load(open("NER_TAGS_OF_DATA.pickle", 'rb'))
+        ner_tokens = pickle.load(open("NER_tags.pickle", 'rb'))
         special_tokens = ["<PADD>", "<START>", "<UNK>"] + ner_tokens
 
         vocab = sorted(list(vocab), key=lambda w: word_freq.get(w, 0), reverse=True)
@@ -180,6 +188,10 @@ class ChatBot:
         Note that this is NOT one-hot encoded. Instead, it returns a vector where
         each entry is a word ID, and said entry corresponds to token index of sentence.
 
+
+        NOTE: this is an expensive function, lets try to minimze this call using the new training method.
+
+
         :param sentence: A string that is to be vectorized.
         :return: an encoding/vector (using this objects vocab) of the sentence.
         """
@@ -189,10 +201,9 @@ class ChatBot:
         vector = np.zeros(len(sentence_tokens), dtype=int)
 
         entity = {}
-        if any(x in ChatBot.ENTITY_WORDS for x in set(sentence_tokens)):
-            for ent in ChatBot.NLP(sentence).ents:
-                for w in nltk.word_tokenize(ent.text):
-                    entity[w] = "<{}>".format(ent.label_)
+        for ent in NLP(sentence).ents:
+            for w in nltk.word_tokenize(ent.text):
+                entity[w] = "<{}>".format(ent.label_)
 
         for i, word in enumerate(sentence_tokens):
             if word in entity:
@@ -371,11 +382,11 @@ def get_options():
                     help="The number of time setps for the decoder. Default = 20.")
     opts.add_option('-v', '--vocab_size', dest='vocab_size', type=int, default=10000,
                     help='The size of the vocab of the Chatbot. Default = 10000')
-    opts.add_option('-V', '--vocab_file', dest='vocab_file', type=str, default="movie_lines_filtered.tsv",
+    opts.add_option('-V', '--vocab_file', dest='vocab_file', type=str, default="Cornell_Movie_Dialogs_Data.json",
                     help="The directory of the file that is used to define the vocab. "
                          "It can be the training data or it can be a list of words that "
                          "define the vocab. Check for the vocab size if a list of words is used."
-                         "Default = 'movie_lines_filtered.tsv'")
+                         "Default = 'Cornell_Movie_Dialogs_Data.json'")
     opts.add_option("-C", '--use_cached_vocab', action="store_true", dest="use_cached_vocab",
                     help="Toggles the use of a cached_vocab instead of recreating the vocab."
                          " (Cached vocab is saved as 'cached_vocab.pickle' in script's dir).")
@@ -383,10 +394,11 @@ def get_options():
                     help="Saves the model and respective vocab after it is trained.")
     opts.add_option("-M", '--verbose', action="store_true", dest="verbose",
                     help="Toggles verbose on.")
-    opts.add_option('-d', '--data_file', dest='data_file', type=str, default="movie_lines_filtered.tsv",
+    opts.add_option('-d', '--data_file', dest='data_file', type=str, default="Cornell_Movie_Dialogs_Data.json",
                     help="The directory of the file that is used to train the model. "
                          "As of now, it can only support files that have the same 5 column format"
-                         "as data from Cornell's Movie-Dialogs data-set. Default = 'movie_lines_filtered.tsv'")
+                         "as data from Cornell's Movie-Dialogs data-set. "
+                         "Default = 'Cornell_Movie_Dialogs_Data.json'")
     opts.add_option('-L', '--sentence_length_limit', dest='sentence_length_limit', type=int, default=20,
                     help="The max (token) length of all sentences in the data used for training. "
                          "Default = 20.")
