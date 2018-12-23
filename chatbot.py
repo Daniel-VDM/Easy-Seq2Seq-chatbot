@@ -81,6 +81,8 @@ class ChatBot:
     @staticmethod
     def _create_and_cache_vocab(filename, vocab_size):
         """
+        Private Static Method.
+
         Creates and pickle's vocab from FILENAME. Note that FILENAME
         is expected to come as a json file where said file is a list of
         question-answer pairs:
@@ -483,5 +485,6 @@ if __name__ == "__main__":
             chat_bot.encoder.save_weights(f"saved_models/{new_model_name}/backup/encoder.h5")
             chat_bot.decoder.save_weights(f"saved_models/{new_model_name}/backup/decoder.h5")
             shutil.copyfile("cached_vocab.pickle", f"saved_models/{new_model_name}/backup/cached_vocab.pickle")
+            shutil.copyfile(opts.data_file, f"saved_models/{new_model_name}/backup/[TRAIN_DATA]{opts.data_file}")
             print(f"\nSaved the trained model to: 'saved_models/{new_model_name}'.")
     chat_bot.chat()
