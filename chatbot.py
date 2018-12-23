@@ -50,7 +50,7 @@ def define_models(n_input, n_output, n_units):
 
 class ChatBot:
 
-    def __init__(self, n_in, n_out, vocab_size, vocab_filename, use_cached_vocab=False):
+    def __init__(self, n_in, n_out, vocab_size, vocab_file, use_cached_vocab=False):
         if os.path.isfile("cached_vocab.pickle") and use_cached_vocab:
             try:
                 data_vocab_dicts = pickle.load(open("cached_vocab.pickle", 'rb'))
@@ -60,16 +60,15 @@ class ChatBot:
                     raise ValueError("'cached_vocab.pickle' vocab size is not {}.".format(vocab_size))
             except Exception as e:
                 print("Exception encountered when reading vocab data: {}".format(e))
-                data_vocab_dicts = self._create_and_cache_vocab(vocab_filename, vocab_size)
+                data_vocab_dicts = self._create_and_cache_vocab(vocab_file, vocab_size)
         else:
-            data_vocab_dicts = self._create_and_cache_vocab(vocab_filename, vocab_size)
+            data_vocab_dicts = self._create_and_cache_vocab(vocab_file, vocab_size)
 
         self.n_in, self.n_out = n_in, n_out
         self.vocab_size = vocab_size
         self.word_to_id_dict = data_vocab_dicts["word_to_id"]
         self.id_to_word_dict = data_vocab_dicts["id_to_word"]
         self.encoder, self.decoder = None, None
-        sys.exit()
 
     def __del__(self):
         if os.path.exists("temp/{}".format(self)):
@@ -79,16 +78,16 @@ class ChatBot:
         return self.encoder is not None and self.decoder is not None
 
     @staticmethod
-    def _create_and_cache_vocab(filename, vocab_size):
+    def _create_and_cache_vocab(vocab_file, vocab_size):
         """
         Private Static Method.
 
-        Creates and pickle's vocab from FILENAME. Note that FILENAME
+        Creates and pickle's vocab from VOCAB_FILE. Note that VOCAB_FILE
         is expected to come as a json file where said file is a list of
         question-answer pairs:
             For example:
                 [...,["Did you change your hair?", "No."], ["Hi!", "Hello."],...]
-        Note that said vocab file needs to be in the same dir as this script.
+        Note that said file needs to be in the same dir as this script.
 
         Vocab uses most frequent words first when truncating the vocab to
         fit the vocab size.
@@ -98,16 +97,16 @@ class ChatBot:
 
         This function is very expensive due to the NER tagging.
 
-        TOSELF: This should be improved in the future to incorperate a better NER tagger
+        TO SELF: This should be improved in the future to incorperate a better NER tagger
         that takes advantage for the Cornell DB structure. I.E NLP the whole movie and
         tag from there...
 
-        :param filename: file name of the jason vocab file used to generate the vocab.
+        :param vocab_file: file name of the jason vocab file used to generate the vocab.
         :param vocab_size: the fixed size of the vocab.
         """
 
         word_freq, i = {}, 0
-        vocab_data = json.load(open(filename))
+        vocab_data = json.load(open(vocab_file))
         ner_label_tokens = set()
         ner_tokens = set()
 
@@ -140,7 +139,7 @@ class ChatBot:
         return dump
 
     @staticmethod
-    def _one_hot_encode_to_list(iterable, vocab_len):
+    def _list_one_hot_encode(iterable, vocab_len):
         """
         Private method for decoder.
 
@@ -157,7 +156,7 @@ class ChatBot:
         return lst
 
     @staticmethod
-    def _one_hot_encode_to_array(iterable, n, vocab_len):
+    def _array_one_hot_encode(iterable, n, vocab_len):
         """
         Private method for train method.
 
@@ -191,13 +190,16 @@ class ChatBot:
         X_1v, X_2v, Y_v = np.array(X_1v), np.array(X_2v), np.array(Y_v)
         return X_1t, X_2t, Y_t, X_1v, X_2v, Y_v
 
+    # DO THIS YOU FUCK
+    # TODO: New file read and wirte batch generator!!!!
+
     def vectorize(self, sentence):
         """
         Note that this is NOT one-hot encoded. Instead, it returns a vector where
         each entry is a word ID, and said entry corresponds to token index of sentence.
 
 
-        NOTE: this is an expensive function, lets try to minimze this call using the new training method.
+        TO SELF: this is an expensive function, lets try to minimze this call using the new training method.
 
 
         :param sentence: A string that is to be vectorized.
@@ -221,19 +223,16 @@ class ChatBot:
             vector[i] = word_id
         return vector
 
-    def create_training_generator(self, data_file, sentence_limit, batch_size=32):
+    def _create_training_generator(self, data_file, sentence_limit, batch_size=32):
         """
         A generator that yields batches of one-hot encoded sentences for
         the Seq2Seq model.
 
-        The training data (DATA_FILE) is expected to come in the following form:
+        DATA_FILE is expected to come from 'self.train' method's DATA_FILE argument.
 
-        5 Column separated by a tab character using the following column (in order):
-            <lineID>\t<characterID>\t<movieID>\t<char_name>\t<text>
+        Also, one-hot encoding comes from the vocab's dictionaries.
 
-        Also, one-hot encoding comes from the vocab dictionaries.
-
-        :param data_file: The data file in the form described above.
+        :param data_file: The data file from the 'train' method.
         :param sentence_limit: The sentence limit for all sentences in the training data.
         :param batch_size: The size of the batch used in training.
         """
@@ -293,29 +292,30 @@ class ChatBot:
             Y = sequence.pad_sequences(Y, maxlen=self.n_out, padding='post')
 
             encode_len = len(self.word_to_id_dict)
-            X_1 = self._one_hot_encode_to_array(X_1, self.n_in, encode_len)
-            X_2 = self._one_hot_encode_to_array(X_2, self.n_out, encode_len)
-            Y = self._one_hot_encode_to_array(Y, self.n_out, encode_len)
+            X_1 = self._array_one_hot_encode(X_1, self.n_in, encode_len)
+            X_2 = self._array_one_hot_encode(X_2, self.n_out, encode_len)
+            Y = self._array_one_hot_encode(Y, self.n_out, encode_len)
 
             batch_number += 1
 
             yield X_1, X_2, Y, "{}/{}".format(batch_number, total_batch_count)
 
-    def train(self, data_filename, sentence_length_limit, epoch, batch_size=32, split_percentage=0.35, verbose=False):
+    def train(self, data_file, sentence_length_limit, epoch, batch_size=32, split_percentage=0.35, verbose=0):
         """
-        Trains the chatbot's seq2seq encoder and decoder LSTMs.
+        Trains the chatbot's encoder and decoder LSTMs (= the Seq2Seq model).
 
-        The training data (DATA_FILENAME) is expected to come in the following form:
+        Note that DATA_FILE is expected to come as a json file where said
+        file is a list of question-answer pairs:
+            For example:
+                [...,["Did you change your hair?", "No."], ["Hi!", "Hello."],...]
+        Note that said file needs to be in the same dir as this script.
 
-        5 Column separated by a tab character using the following column (in order):
-            <lineID>\t<characterID>\t<movieID>\t<char_name>\t<text>
-
-        :param data_filename: the data being train on. Must follow format above.
+        :param data_file: the data being train on. Must follow format above.
         :param sentence_length_limit: the max length of a sentence used in training.
         :param epoch: number of epochs in training.
         :param batch_size: size of the batch in training.
-        :param split_percentage: value between 0 and 1, percentage of training
-            data held out for validation.
+        :param split_percentage: a float between 0 and 1. It is the percentage of
+                                 training data held out for validation.
         :param verbose: update messages during training.
         """
         model, encoder, decoder = define_models(len(self.word_to_id_dict), len(self.id_to_word_dict), 128)
@@ -324,9 +324,9 @@ class ChatBot:
             print(model.summary())
         print("\n\n-==TRAINING=--\n")
         for ep in range(epoch):
-            batch_gen = self.create_training_generator(data_file=data_filename,
-                                                       batch_size=batch_size,
-                                                       sentence_limit=sentence_length_limit)
+            batch_gen = self._create_training_generator(data_file=data_file,
+                                                        batch_size=batch_size,
+                                                        sentence_limit=sentence_length_limit)
             for X_1, X_2, Y, batch_counter in batch_gen:
                 if verbose:
                     sys.stdout.flush()
@@ -343,7 +343,7 @@ class ChatBot:
         """
         curr_in_state = self.encoder.predict(X_in)
         curr_out_state = [
-            np.array(self._one_hot_encode_to_list([[self.word_to_id_dict["<START>"]]], len(self.word_to_id_dict)))
+            np.array(self._list_one_hot_encode([[self.word_to_id_dict["<START>"]]], len(self.word_to_id_dict)))
         ]
         Y_hat = []
         for t in range(self.n_in):
@@ -375,8 +375,9 @@ class ChatBot:
             sys.stdout.write(">")
             sys.stdout.flush()
             input_str = input()
-            vocab_encoded_X_in = sequence.pad_sequences([self.vectorize(input_str)], maxlen=self.n_in, padding='post')
-            X_in = np.array(self._one_hot_encode_to_list(vocab_encoded_X_in, len(self.word_to_id_dict)))
+            vocab_encoded_X_in = sequence.pad_sequences([self.vectorize(input_str)],
+                                                        maxlen=self.n_in, padding='post')
+            X_in = np.array(self._list_one_hot_encode(vocab_encoded_X_in, len(self.word_to_id_dict)))
             Y_hat = self._predict(X_in)
             print("Response: {}".format(self._vector_to_words(Y_hat)))
             print(" ")
@@ -477,14 +478,16 @@ if __name__ == "__main__":
                        opts.epoch, opts.batch_size, opts.split, opts.verbose)
 
         if new_model_name:
-            if not os.path.exists(f"saved_models/{new_model_name}"):
-                os.mkdir(f"saved_models/{new_model_name}")
-            pickle.dump(chat_bot, open(f"saved_models/{new_model_name}/chatbot.pickle", 'wb'))
-            if not os.path.exists(f"saved_models/{new_model_name}/backup"):
-                os.mkdir(f"saved_models/{new_model_name}/backup")
-            chat_bot.encoder.save_weights(f"saved_models/{new_model_name}/backup/encoder.h5")
-            chat_bot.decoder.save_weights(f"saved_models/{new_model_name}/backup/decoder.h5")
-            shutil.copyfile("cached_vocab.pickle", f"saved_models/{new_model_name}/backup/cached_vocab.pickle")
-            shutil.copyfile(opts.data_file, f"saved_models/{new_model_name}/backup/[TRAIN_DATA]{opts.data_file}")
-            print(f"\nSaved the trained model to: 'saved_models/{new_model_name}'.")
+            new_model_path = f"saved_models/{new_model_name}"
+            if not os.path.exists(new_model_path):
+                os.mkdir(new_model_path)
+            pickle.dump(chat_bot, open(f"{new_model_path}/chatbot.pickle", 'wb'))
+            if not os.path.exists(f"{new_model_path}/backup"):
+                os.mkdir(f"{new_model_path}/backup")
+            chat_bot.encoder.save_weights(f"{new_model_path}/backup/encoder.h5")
+            chat_bot.decoder.save_weights(f"{new_model_path}/backup/decoder.h5")
+            shutil.copyfile("cached_vocab.pickle", f"{new_model_path}/backup/cached_vocab.pickle")
+            shutil.copyfile(opts.data_file, f"{new_model_path}/backup/[TRAIN_DATA]{opts.data_file}")
+            shutil.copyfile(opts.vocab_file, f"{new_model_path}/backup/[VOCAB_DATA]{opts.vocab_file}")
+            print(f"\nSaved the trained model to: '{new_model_path}'.")
     chat_bot.chat()
