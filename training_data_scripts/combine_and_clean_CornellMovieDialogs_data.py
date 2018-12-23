@@ -26,19 +26,6 @@ for i in range(len(data) - 1):
     sys.stdout.write(f"\rFiltered {i}/{len(data)}")
     sys.stdout.flush()
 
-# Hardcoded Data.
-if os.path.isfile("dataset.txt"):
-    new_stuff = open("dataset.txt", "r").read().split("\n\n")
-    if not new_stuff[-1]:
-        new_stuff.pop()
-
-    for i, line in zip(range(1, len(new_stuff)+1, 2), new_stuff):
-        if not line:
-            continue
-        question, answer = line.split("\n")
-        dat.append((str(line_num+i), "TEMP_CHAR_A", "TEMP_MOV", "A", question))
-        dat.append((str(line_num + i + 1), "TEMP_CHAR_B", "TEMP_MOV", "B", answer))
-
 dat.sort(key=lambda e: int(e[0]))
 
 # Q and A filtering is done below, explained in writeup.
@@ -48,6 +35,18 @@ for i in range(len(dat) - 1):
     line_b, b_uter, b_mov, _, b_text = dat[i + 1]
     if a_uter != b_uter and a_mov == b_mov and int(line_b) == int(line_a) + 1:
         jason_dump.append((a_text, b_text))
+
+# Hardcoded Data
+if os.path.isfile("dataset.txt"):
+    new_stuff = open("dataset.txt", "r").read().split("\n\n")
+    if not new_stuff[-1]:
+        new_stuff.pop()
+
+    for line in new_stuff:
+        if not line:
+            continue
+        question, answer = line.split("\n")
+        jason_dump.append((question, answer))
 
 with open("Cornell_Movie_Dialogs_Data.json", 'w', encoding='utf-8') as f:
     json.dump(jason_dump, f)
