@@ -47,10 +47,6 @@ def define_models(n_input, n_output, n_units):
     # return all models
     return model, encoder_model, decoder_model
 
-# DO THIS NEXT!!!!!!!!!!!!!!!!!!!
-# TODO: CHANGE VOCAB / TRAINING DATA TO USE JSON FILES
-# Cornell_Movie_Dialogs_Data.json
-
 
 class ChatBot:
 
@@ -64,15 +60,16 @@ class ChatBot:
                     raise ValueError("'cached_vocab.pickle' vocab size is not {}.".format(vocab_size))
             except Exception as e:
                 print("Exception encountered when reading vocab data: {}".format(e))
-                data_vocab_dicts = self._create_and_save_vocab(vocab_filename, vocab_size)
+                data_vocab_dicts = self._create_and_cache_vocab(vocab_filename, vocab_size)
         else:
-            data_vocab_dicts = self._create_and_save_vocab(vocab_filename, vocab_size)
+            data_vocab_dicts = self._create_and_cache_vocab(vocab_filename, vocab_size)
 
         self.n_in, self.n_out = n_in, n_out
         self.vocab_size = vocab_size
         self.word_to_id_dict = data_vocab_dicts["word_to_id"]
         self.id_to_word_dict = data_vocab_dicts["id_to_word"]
         self.encoder, self.decoder = None, None
+        sys.exit()
 
     def __del__(self):
         if os.path.exists("temp/{}".format(self)):
@@ -81,54 +78,63 @@ class ChatBot:
     def __bool__(self):
         return self.encoder is not None and self.decoder is not None
 
-    # TODO: REMOVE 5 COL DEPENDANCE AND USE THE NEW JSON FILE.
-
     @staticmethod
-    def _create_and_save_vocab(filename, vocab_size):
+    def _create_and_cache_vocab(filename, vocab_size):
         """
-        Creates and pickle's vocab from the training data. Note that the training
-        data is expected to come in the following form:
-
-        5 Column separated by a tab character using the following column (in order):
-            <lineID>\t<characterID>\t<movieID>\t<char_name>\t<text>
+        Creates and pickle's vocab from FILENAME. Note that FILENAME
+        is expected to come as a json file where said file is a list of
+        question-answer pairs:
+            For example:
+                [...,["Did you change your hair?", "No."], ["Hi!", "Hello."],...]
+        Note that said vocab file needs to be in the same dir as this script.
 
         Vocab uses most frequent words first when truncating the vocab to
         fit the vocab size.
 
-        # TODO: NER FILTERING THAT IS CORRECT. and NOT use 5 col!!!
-        # TODO: more robust vocab method to handel plain words instead of just 5 col.
+        Note that the cached vocab also saves a set of NER tokens (from the given
+        vocab file) for future references.
 
-        :param filename: file name of training data used to generate dict.
+        This function is very expensive due to the NER tagging.
+
+        TOSELF: This should be improved in the future to incorperate a better NER tagger
+        that takes advantage for the Cornell DB structure. I.E NLP the whole movie and
+        tag from there...
+
+        :param filename: file name of the jason vocab file used to generate the vocab.
         :param vocab_size: the fixed size of the vocab.
         """
-        word_freq, i = {}, 0
-        data = open(filename, encoding='utf-8', errors='ignore').read().split('\n')
 
-        for line in data:
-            if not line:
-                continue
-            for word in nltk.word_tokenize(line.split("\t")[4]):
-                if word in word_freq:
-                    word_freq[word] += 1
-                else:
-                    word_freq[word] = 1
+        word_freq, i = {}, 0
+        vocab_data = json.load(open(filename))
+        ner_label_tokens = set()
+        ner_tokens = set()
+
+        for question, answer in vocab_data:
+            for entity in itertools.chain(NLP(question).ents, NLP(answer).ents):
+                ner_label_tokens.add(f"<{entity.label_}>")
+                for wrd in nltk.word_tokenize(entity.text):
+                    ner_tokens.add(wrd)
+            for tok in itertools.chain(nltk.word_tokenize(question), nltk.word_tokenize(answer)):
+                if tok.isalpha() and tok not in ner_tokens:
+                    tok = tok.lower()
+                    if tok in word_freq:
+                        word_freq[tok] += 1
+                    else:
+                        word_freq[tok] = 1
             i += 1
-            sys.stdout.write("\rCreating Vocab, parsing {}/{} document lines.".format(i, len(data)))
+            sys.stdout.write(f"\rCreating Vocab, parsing {i}/{len(vocab_data)} question-answer pairs.")
             sys.stdout.flush()
 
-        alpha_vocab = set(filter(lambda w: w.isalpha(), word_freq.keys()))
-        vocab = set(map(lambda w: w.lower(), alpha_vocab))
+        special_tokens = ["<PADD>", "<START>", "<UNK>"] + list(ner_label_tokens)
 
-        ner_tokens = pickle.load(open("NER_tags.pickle", 'rb'))
-        special_tokens = ["<PADD>", "<START>", "<UNK>"] + ner_tokens
-
-        vocab = sorted(list(vocab), key=lambda w: word_freq.get(w, 0), reverse=True)
+        vocab = sorted(list(word_freq.keys()), key=lambda w: word_freq.get(w, 0), reverse=True)
         vocab = vocab[:vocab_size - len(special_tokens)]
 
         dump = {"word_to_id": {c: i for i, c in enumerate(itertools.chain(special_tokens, vocab))},
-                "id_to_word": {i: c for i, c in enumerate(itertools.chain(special_tokens, vocab))}}
-        print("\nCached vocab file.")
+                "id_to_word": {i: c for i, c in enumerate(itertools.chain(special_tokens, vocab))},
+                "NER_tokens": ner_tokens}
         pickle.dump(dump, open("cached_vocab.pickle", 'wb'))
+        print("\nCached vocab file.")
         return dump
 
     @staticmethod
@@ -384,11 +390,11 @@ def get_options():
                     help='The size of the vocab of the Chatbot. Default = 10000')
     opts.add_option('-V', '--vocab_file', dest='vocab_file', type=str, default="Cornell_Movie_Dialogs_Data.json",
                     help="The directory of the file that is used to define the vocab. "
-                         "It can be the training data or it can be a list of words that "
-                         "define the vocab. Check for the vocab size if a list of words is used."
+                         "This file must be a json file that contains a list of question-answer"
+                         "pairs/lists. Reference the included/default file for details."
                          "Default = 'Cornell_Movie_Dialogs_Data.json'")
     opts.add_option("-C", '--use_cached_vocab', action="store_true", dest="use_cached_vocab",
-                    help="Toggles the use of a cached_vocab instead of recreating the vocab."
+                    help="Toggles the use of a cached_vocab instead of recreating the vocab if one exists."
                          " (Cached vocab is saved as 'cached_vocab.pickle' in script's dir).")
     opts.add_option("-S", '--save', action="store_true", dest="save_model",
                     help="Saves the model and respective vocab after it is trained.")
@@ -396,8 +402,8 @@ def get_options():
                     help="Toggles verbose on.")
     opts.add_option('-d', '--data_file', dest='data_file', type=str, default="Cornell_Movie_Dialogs_Data.json",
                     help="The directory of the file that is used to train the model. "
-                         "As of now, it can only support files that have the same 5 column format"
-                         "as data from Cornell's Movie-Dialogs data-set. "
+                         "This file must be a json file that contains a list of question-answer"
+                         "pairs/lists. Reference the included/default file for details."
                          "Default = 'Cornell_Movie_Dialogs_Data.json'")
     opts.add_option('-L', '--sentence_length_limit', dest='sentence_length_limit', type=int, default=20,
                     help="The max (token) length of all sentences in the data used for training. "
@@ -476,7 +482,6 @@ if __name__ == "__main__":
                 os.mkdir(f"saved_models/{new_model_name}/backup")
             chat_bot.encoder.save_weights(f"saved_models/{new_model_name}/backup/encoder.h5")
             chat_bot.decoder.save_weights(f"saved_models/{new_model_name}/backup/decoder.h5")
-            pickle.dump({"word_to_id": chat_bot.word_to_id_dict, "id_to_word": chat_bot.id_to_word_dict},
-                        open(f"saved_models/{new_model_name}/backup/cached_vocab.pickle", 'wb'))
+            shutil.copyfile("cached_vocab.pickle", f"saved_models/{new_model_name}/backup/cached_vocab.pickle")
             print(f"\nSaved the trained model to: 'saved_models/{new_model_name}'.")
     chat_bot.chat()

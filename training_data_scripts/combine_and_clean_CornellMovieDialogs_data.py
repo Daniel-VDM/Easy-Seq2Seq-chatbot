@@ -5,7 +5,7 @@ import os
 
 dat = []
 
-sys.stdout.write("Input Cornell Movie Dialogs Raw .tsv file name: ")
+sys.stdout.write("What is the Cornell Movie Dialog file name? ")
 sys.stdout.flush()
 file_name = input()
 
@@ -23,18 +23,18 @@ for i in range(len(data) - 1):
     line_num = max(int(clean_id), line_num)
     if 0 < len(nltk.word_tokenize(text)) <= 20:
         dat.append((clean_id, char, mov, char_name, text))
-    sys.stdout.write(f"\rFiltered {i}/{len(data)}")
+    sys.stdout.write(f"\rProcessed {i}/{len(data)}")
     sys.stdout.flush()
 
 dat.sort(key=lambda e: int(e[0]))
 
 # Q and A filtering is done below, explained in writeup.
-jason_dump = []
+Q_A_pairs = []
 for i in range(len(dat) - 1):
     line_a, a_uter, a_mov, _, a_text = dat[i]
     line_b, b_uter, b_mov, _, b_text = dat[i + 1]
     if a_uter != b_uter and a_mov == b_mov and int(line_b) == int(line_a) + 1:
-        jason_dump.append((a_text, b_text))
+        Q_A_pairs.append((a_text, b_text))
 
 # Hardcoded Data
 if os.path.isfile("dataset.txt"):
@@ -46,8 +46,8 @@ if os.path.isfile("dataset.txt"):
         if not line:
             continue
         question, answer = line.split("\n")
-        jason_dump.append((question, answer))
+        Q_A_pairs.append((question, answer))
 
 with open("Cornell_Movie_Dialogs_Data.json", 'w', encoding='utf-8') as f:
-    json.dump(jason_dump, f)
+    json.dump(Q_A_pairs, f)
 print("\nDone. Wrote json file as: 'Cornell_Movie_Dialogs_Data.json'")
