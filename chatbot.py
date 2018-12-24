@@ -7,6 +7,7 @@ import itertools
 import spacy
 import shutil
 import json
+import threading
 from optparse import OptionParser
 from collections import deque
 from keras.models import Model
@@ -50,8 +51,8 @@ def define_models(n_input, n_output, n_units):
 
 class ChatBot:
 
-    def __init__(self, n_in, n_out, vocab_size, vocab_file, use_cached_vocab=False):
-        if os.path.isfile("cached_vocab.pickle") and use_cached_vocab:
+    def __init__(self, n_in, n_out, vocab_size, vocab_file, ignore_cached_vocab=False):
+        if os.path.isfile("cached_vocab.pickle") and not ignore_cached_vocab:
             try:
                 data_vocab_dicts = pickle.load(open("cached_vocab.pickle", 'rb'))
                 if len(data_vocab_dicts["word_to_id"]) != len(data_vocab_dicts["word_to_id"]):
@@ -68,11 +69,12 @@ class ChatBot:
         self.vocab_size = vocab_size
         self.word_to_id_dict = data_vocab_dicts["word_to_id"]
         self.id_to_word_dict = data_vocab_dicts["id_to_word"]
+        self.ner_tokens = data_vocab_dicts["NER_tokens"]
         self.encoder, self.decoder = None, None
 
     def __del__(self):
-        if os.path.exists("temp/{}".format(self)):
-            shutil.rmtree("temp/{}".format(self))
+        if os.path.exists("temp/{}".format(id(self))):
+            shutil.rmtree("temp/{}".format(id(self)))
 
     def __bool__(self):
         return self.encoder is not None and self.decoder is not None
@@ -190,10 +192,7 @@ class ChatBot:
         X_1v, X_2v, Y_v = np.array(X_1v), np.array(X_2v), np.array(Y_v)
         return X_1t, X_2t, Y_t, X_1v, X_2v, Y_v
 
-    # DO THIS YOU FUCK
-    # TODO: New file read and wirte batch generator!!!!
-
-    def vectorize(self, sentence):
+    def vectorize(self, sentence, length=None):
         """
         Note that this is NOT one-hot encoded. Instead, it returns a vector where
         each entry is a word ID, and said entry corresponds to token index of sentence.
@@ -203,25 +202,110 @@ class ChatBot:
 
 
         :param sentence: A string that is to be vectorized.
+                         Note that it CAN include punctuation and unknown words.
+        :param length: The length of the returned vector. Note that it defaults to
+                       the number of tokens in SENTENCE.
         :return: an encoding/vector (using this objects vocab) of the sentence.
         """
         sentence = sentence.strip()
         unk_token_id = self.word_to_id_dict["<UNK>"]
-        sentence_tokens = np.array(list(filter(lambda s: s.isalpha(), nltk.word_tokenize(sentence))))
-        vector = np.zeros(len(sentence_tokens), dtype=int)
+        sentence_tokens = list(filter(lambda s: s.isalpha(), nltk.word_tokenize(sentence)))
+        length = length if length else len(sentence_tokens)
+        vector = np.zeros(length, dtype=int)
 
         entity = {}
-        for ent in NLP(sentence).ents:
-            for w in nltk.word_tokenize(ent.text):
-                entity[w] = "<{}>".format(ent.label_)
+        if any(w for w in sentence_tokens if w in self.ner_tokens):
+            for ent in NLP(sentence).ents:
+                for w in nltk.word_tokenize(ent.text):
+                    entity[w] = f"<{ent.label_}>"
 
-        for i, word in enumerate(sentence_tokens):
+        for i, word in zip(range(length), sentence_tokens):
             if word in entity:
                 word_id = self.word_to_id_dict[entity[word]]
             else:
                 word_id = self.word_to_id_dict.get(word.lower(), unk_token_id)
             vector[i] = word_id
         return vector
+
+    def _encode_and_store_training_data(self, data_file, sentence_limit, store_dir='temp',
+                                        num_threads=4, verbose=0):
+        """
+        Private method to create and save an 'encoded' version of the training data
+        (from DATA_FILE) to the STORE_DIR directory.
+
+        The 'encoding' is as follows:
+            Given a sentence, we create an array/vector of size N_in or N_out
+            (depending on which data we are encoding) where element i of
+            said vector is token i's word ID in the word_to_id_dict dictionary
+            of this object.
+
+        Note each question in the training data gets its own vector & file and
+        each answer gets 2 vectors & files (one of them is shifted by 1 time step).
+
+        :param data_file: The data file from the 'train' method. ()
+        :param sentence_limit: The sentence limit for all sentences in the training data.
+        :param store_dir: The directory in which the encoding is stored in.
+        TODO: multi-thread this shit
+        """
+        # TODO: partially working, NEED TO CHECK INDEXING AND NEED TO KEEP TRACK OF DATA CORRECTLY.
+        # ONCE INDEXING IS DONE, DO SOME TESTING!!!!!
+        # INDEXING U FUCK
+        i = 0
+        data = json.load(open(data_file))
+        # directory = f"{store_dir}/{id(self)}"
+        directory = f"{store_dir}/DEV"
+
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+        def vectorize_and_write(dat):
+            nonlocal i
+            for j, (question, answer) in enumerate(dat):
+                q_toks = [tok for tok in nltk.word_tokenize(question) if tok.isalpha()]
+                a_toks = [tok for tok in nltk.word_tokenize(answer) if tok.isalpha()]
+                if len(q_toks) <= sentence_limit and len(a_toks) <= sentence_limit:
+                    q_vec = self.vectorize(question, self.n_in)
+                    a_vec = self.vectorize(answer, self.n_out)
+                    a_shift_vec = np.roll(a_vec, 1)
+                    a_shift_vec[0] = self.word_to_id_dict["<START>"]
+
+                    # THIS i IS ALL FUCKED UP, CHECK IT!!!!!
+                    pickle.dump(q_vec, open(f"{directory}/{i}_x1.pickle", 'wb'))
+                    pickle.dump(a_vec, open(f"{directory}/{i}_y.pickle", 'wb'))
+                    pickle.dump(a_shift_vec, open(f"{directory}/{i}_x2.pickle", 'wb'))
+                    i += 1
+                if verbose:
+                    sys.stdout.write(f"\rVectorizing Training data {j}/{len(data)}")
+                    sys.stdout.flush()
+
+        step_size = int(np.ceil(len(data) / num_threads))
+        split_data = [data[x:y] for x, y in zip(range(0, len(data), step_size),
+                                                range(step_size, len(data) + step_size, step_size))]
+        thread_list = [threading.Thread(target=vectorize_and_write, args=(lst,)) for lst in split_data]
+
+        if verbose:
+            print(f"Starting {num_threads} threads for Data Vectorization.")
+
+        for index in range(num_threads):
+            thread_list[index].start()
+
+        for index in range(num_threads):
+            thread_list[index].join()
+        return True
+
+    def _training_vectors_generator(self, batch_size=32, store_dir='temp'):
+        """Private Generator for the 'train' method of this object.
+
+        Note that this uses the saved 'encoding' in STORE_DIR (generated by the
+        '_encode_and_store_training_data' method) to create the one-hot matrices
+        used for training. Said encodings are identified by this object's ID in
+        STORE_DIR.
+
+        :param batch_size: The size of the batch used in training.
+        :param store_dir: he directory in which the encoding is stored in.
+        :return: A generator.
+        """
+        pass
 
     def _create_training_generator(self, data_file, sentence_limit, batch_size=32):
         """
@@ -322,6 +406,13 @@ class ChatBot:
         model.compile(optimizer='adam', loss='categorical_crossentropy')
         if verbose:
             print(model.summary())
+
+        print("-==Preparing Training Data==-")
+        self._encode_and_store_training_data(data_file=data_file,
+                                             sentence_limit=sentence_length_limit,
+                                             verbose=verbose)
+        sys.exit(1)
+
         print("\n\n-==TRAINING=--\n")
         for ep in range(epoch):
             batch_gen = self._create_training_generator(data_file=data_file,
@@ -375,6 +466,7 @@ class ChatBot:
             sys.stdout.write(">")
             sys.stdout.flush()
             input_str = input()
+            # TODO: refactor the vectorize to not use sequences pad
             vocab_encoded_X_in = sequence.pad_sequences([self.vectorize(input_str)],
                                                         maxlen=self.n_in, padding='post')
             X_in = np.array(self._list_one_hot_encode(vocab_encoded_X_in, len(self.word_to_id_dict)))
@@ -396,9 +488,9 @@ def get_options():
                          "This file must be a json file that contains a list of question-answer"
                          "pairs/lists. Reference the included/default file for details."
                          "Default = 'Cornell_Movie_Dialogs_Data.json'")
-    opts.add_option("-C", '--use_cached_vocab', action="store_true", dest="use_cached_vocab",
-                    help="Toggles the use of a cached_vocab instead of recreating the vocab if one exists."
-                         " (Cached vocab is saved as 'cached_vocab.pickle' in script's dir).")
+    opts.add_option("-I", '--ignore_cached_vocab', action="store_true", dest="ignore_cached_vocab",
+                    help="Forces the script to ignore the cached vocab file. "
+                         "Thus creating a new vocab file (and cached vocab file) for training.")
     opts.add_option("-S", '--save', action="store_true", dest="save_model",
                     help="Saves the model and respective vocab after it is trained.")
     opts.add_option("-M", '--verbose', action="store_true", dest="verbose",
@@ -473,7 +565,7 @@ if __name__ == "__main__":
             sys.stdout.flush()
             new_model_name = input()
 
-        chat_bot = ChatBot(opts.N_in, opts.N_out, opts.vocab_size, opts.vocab_file, opts.use_cached_vocab)
+        chat_bot = ChatBot(opts.N_in, opts.N_out, opts.vocab_size, opts.vocab_file, opts.ignore_cached_vocab)
         chat_bot.train(opts.data_file, opts.sentence_length_limit,
                        opts.epoch, opts.batch_size, opts.split, opts.verbose)
 
