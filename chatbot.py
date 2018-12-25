@@ -7,7 +7,6 @@ import itertools
 import spacy
 import shutil
 import json
-import threading
 from optparse import OptionParser
 from collections import deque
 from keras.models import Model
@@ -51,7 +50,9 @@ def define_models(n_input, n_output, n_units):
 
 class ChatBot:
 
-    def __init__(self, n_in, n_out, vocab_size, vocab_file, ignore_cached_vocab=False):
+    def __init__(self, n_in, n_out, vocab_size, vocab_file, ignore_cached_vocab=False, ner_enabled=True):
+        self.ner_enabled = ner_enabled
+
         if os.path.isfile("cached_vocab.pickle") and not ignore_cached_vocab:
             try:
                 data_vocab_dicts = pickle.load(open("cached_vocab.pickle", 'rb'))
@@ -59,28 +60,34 @@ class ChatBot:
                     raise ValueError("'cached_vocab.pickle' dictionary lengths do not match.")
                 if len(data_vocab_dicts["word_to_id"]) != vocab_size:
                     raise ValueError("'cached_vocab.pickle' vocab size is not {}.".format(vocab_size))
+                if self.ner_enabled and ("NER_tokens" not in data_vocab_dicts.keys()
+                                         or "NER_label_to_token_dict" not in data_vocab_dicts.keys()):
+                    raise ValueError("'cached_vocab.pickle' does not contain NER data.")
             except Exception as e:
                 print("Exception encountered when reading vocab data: {}".format(e))
-                data_vocab_dicts = self._create_and_cache_vocab(vocab_file, vocab_size)
+                data_vocab_dicts = self._create_and_cache_vocab(vocab_file, vocab_size, ner_enabled)
         else:
-            data_vocab_dicts = self._create_and_cache_vocab(vocab_file, vocab_size)
+            data_vocab_dicts = self._create_and_cache_vocab(vocab_file, vocab_size, ner_enabled)
 
         self.n_in, self.n_out = n_in, n_out
         self.vocab_size = vocab_size
         self.word_to_id_dict = data_vocab_dicts["word_to_id"]
         self.id_to_word_dict = data_vocab_dicts["id_to_word"]
-        self.ner_tokens = data_vocab_dicts["NER_tokens"]
         self.encoder, self.decoder = None, None
 
+        if self.ner_enabled:
+            self.ner_tokens = data_vocab_dicts["NER_tokens"]
+            self.ner_label_to_token_dict = data_vocab_dicts["NER_label_to_token_dict"]
+
     def __del__(self):
-        if os.path.exists("temp/{}".format(id(self))):
-            shutil.rmtree("temp/{}".format(id(self)))
+        # TODO: delete temp files...
+        pass
 
     def __bool__(self):
         return self.encoder is not None and self.decoder is not None
 
     @staticmethod
-    def _create_and_cache_vocab(vocab_file, vocab_size):
+    def _create_and_cache_vocab(vocab_file, vocab_size, ner_enabled=True):
         """
         Private Static Method.
 
@@ -105,18 +112,25 @@ class ChatBot:
 
         :param vocab_file: file name of the jason vocab file used to generate the vocab.
         :param vocab_size: the fixed size of the vocab.
+        :param ner_enabled: toggles NER encoding for vocab.
         """
-
         word_freq, i = {}, 0
         vocab_data = json.load(open(vocab_file))
         ner_label_tokens = set()
         ner_tokens = set()
+        ner_label_to_token_dict = {}
 
         for question, answer in vocab_data:
-            for entity in itertools.chain(NLP(question).ents, NLP(answer).ents):
-                ner_label_tokens.add(f"<{entity.label_}>")
-                for wrd in nltk.word_tokenize(entity.text):
-                    ner_tokens.add(wrd)
+            if ner_enabled:
+                for entity in itertools.chain(NLP(question).ents, NLP(answer).ents):
+                    ner_label_tokens.add(f"<{entity.label_}>")
+                    for wrd in nltk.word_tokenize(entity.text):
+                        ner_tokens.add(wrd)
+                        if f"<{entity.label_}>" in ner_label_to_token_dict:
+                            ner_label_to_token_dict[f"<{entity.label_}>"].add(wrd)
+                        else:
+                            ner_label_to_token_dict[f"<{entity.label_}>"] = {wrd}
+
             for tok in itertools.chain(nltk.word_tokenize(question), nltk.word_tokenize(answer)):
                 if tok.isalpha() and tok not in ner_tokens:
                     tok = tok.lower()
@@ -124,6 +138,7 @@ class ChatBot:
                         word_freq[tok] += 1
                     else:
                         word_freq[tok] = 1
+
             i += 1
             sys.stdout.write(f"\rCreating Vocab, parsing {i}/{len(vocab_data)} question-answer pairs.")
             sys.stdout.flush()
@@ -133,9 +148,13 @@ class ChatBot:
         vocab = sorted(list(word_freq.keys()), key=lambda w: word_freq.get(w, 0), reverse=True)
         vocab = vocab[:vocab_size - len(special_tokens)]
 
-        dump = {"word_to_id": {c: i for i, c in enumerate(itertools.chain(special_tokens, vocab))},
-                "id_to_word": {i: c for i, c in enumerate(itertools.chain(special_tokens, vocab))},
-                "NER_tokens": ner_tokens}
+        if ner_enabled:
+            dump = {"word_to_id": {c: i for i, c in enumerate(itertools.chain(special_tokens, vocab))},
+                    "id_to_word": {i: c for i, c in enumerate(itertools.chain(special_tokens, vocab))},
+                    "NER_tokens": ner_tokens, "NER_label_to_token_dict": ner_label_to_token_dict}
+        else:
+            dump = {"word_to_id": {c: i for i, c in enumerate(itertools.chain(special_tokens, vocab))},
+                    "id_to_word": {i: c for i, c in enumerate(itertools.chain(special_tokens, vocab))}}
         pickle.dump(dump, open("cached_vocab.pickle", 'wb'))
         print("\nCached vocab file.")
         return dump
@@ -197,10 +216,6 @@ class ChatBot:
         Note that this is NOT one-hot encoded. Instead, it returns a vector where
         each entry is a word ID, and said entry corresponds to token index of sentence.
 
-
-        TO SELF: this is an expensive function, lets try to minimze this call using the new training method.
-
-
         :param sentence: A string that is to be vectorized.
                          Note that it CAN include punctuation and unknown words.
         :param length: The length of the returned vector. Note that it defaults to
@@ -214,7 +229,7 @@ class ChatBot:
         vector = np.zeros(length, dtype=int)
 
         entity = {}
-        if any(w for w in sentence_tokens if w in self.ner_tokens):
+        if self.ner_enabled and any(w for w in sentence_tokens if w in self.ner_tokens):
             for ent in NLP(sentence).ents:
                 for w in nltk.word_tokenize(ent.text):
                     entity[w] = f"<{ent.label_}>"
@@ -227,8 +242,7 @@ class ChatBot:
             vector[i] = word_id
         return vector
 
-    def _encode_and_store_training_data(self, data_file, sentence_limit, store_dir='temp',
-                                        num_threads=4, verbose=0):
+    def _encode_and_store_training_data(self, data_file, temp_store_dir='temp', verbose=0):
         """
         Private method to create and save an 'encoded' version of the training data
         (from DATA_FILE) to the STORE_DIR directory.
@@ -243,57 +257,41 @@ class ChatBot:
         each answer gets 2 vectors & files (one of them is shifted by 1 time step).
 
         :param data_file: The data file from the 'train' method. ()
-        :param sentence_limit: The sentence limit for all sentences in the training data.
-        :param store_dir: The directory in which the encoding is stored in.
-        TODO: multi-thread this shit
+        :param temp_store_dir: The directory in which the encoding is stored in.
+        :param verbose: update messages during execution.
+        :return: The number question-answer pairs encoded.
         """
-        # TODO: partially working, NEED TO CHECK INDEXING AND NEED TO KEEP TRACK OF DATA CORRECTLY.
-        # ONCE INDEXING IS DONE, DO SOME TESTING!!!!!
-        # INDEXING U FUCK
-        i = 0
+
+        def is_valid_data(question, answer):
+            q_toks = [tok for tok in nltk.word_tokenize(question) if tok.isalpha()]
+            a_toks = [tok for tok in nltk.word_tokenize(answer) if tok.isalpha()]
+            return len(q_toks) <= self.n_in and len(a_toks) <= self.n_out
+
+        count = 0
+        # directory = f"{temp_store_dir}/{id(self)}"
+        directory = f"{temp_store_dir}/DEV"
         data = json.load(open(data_file))
-        # directory = f"{store_dir}/{id(self)}"
-        directory = f"{store_dir}/DEV"
 
         if not os.path.exists(directory):
             os.makedirs(directory)
 
-        def vectorize_and_write(dat):
-            nonlocal i
-            for j, (question, answer) in enumerate(dat):
-                q_toks = [tok for tok in nltk.word_tokenize(question) if tok.isalpha()]
-                a_toks = [tok for tok in nltk.word_tokenize(answer) if tok.isalpha()]
-                if len(q_toks) <= sentence_limit and len(a_toks) <= sentence_limit:
-                    q_vec = self.vectorize(question, self.n_in)
-                    a_vec = self.vectorize(answer, self.n_out)
-                    a_shift_vec = np.roll(a_vec, 1)
-                    a_shift_vec[0] = self.word_to_id_dict["<START>"]
+        for i, (q, a) in enumerate(data):
+            if is_valid_data(q, a):
+                q_vec = self.vectorize(q, self.n_in)
+                a_vec = self.vectorize(a, self.n_out)
+                a_shift_vec = np.roll(a_vec, 1)
+                a_shift_vec[0] = self.word_to_id_dict["<START>"]
+                pickle.dump(q_vec, open(f"{directory}/{count}_x1.pickle", 'wb'))
+                pickle.dump(a_vec, open(f"{directory}/{count}_y.pickle", 'wb'))
+                pickle.dump(a_shift_vec, open(f"{directory}/{count}_x2.pickle", 'wb'))
+                count += 1
+            if verbose:
+                sys.stdout.write(f"\rVectorizing Training data {i}/{len(data)}")
+                sys.stdout.flush()
 
-                    # THIS i IS ALL FUCKED UP, CHECK IT!!!!!
-                    pickle.dump(q_vec, open(f"{directory}/{i}_x1.pickle", 'wb'))
-                    pickle.dump(a_vec, open(f"{directory}/{i}_y.pickle", 'wb'))
-                    pickle.dump(a_shift_vec, open(f"{directory}/{i}_x2.pickle", 'wb'))
-                    i += 1
-                if verbose:
-                    sys.stdout.write(f"\rVectorizing Training data {j}/{len(data)}")
-                    sys.stdout.flush()
+        return count
 
-        step_size = int(np.ceil(len(data) / num_threads))
-        split_data = [data[x:y] for x, y in zip(range(0, len(data), step_size),
-                                                range(step_size, len(data) + step_size, step_size))]
-        thread_list = [threading.Thread(target=vectorize_and_write, args=(lst,)) for lst in split_data]
-
-        if verbose:
-            print(f"Starting {num_threads} threads for Data Vectorization.")
-
-        for index in range(num_threads):
-            thread_list[index].start()
-
-        for index in range(num_threads):
-            thread_list[index].join()
-        return True
-
-    def _training_vectors_generator(self, batch_size=32, store_dir='temp'):
+    def _training_vectors_generator(self, batch_size=32, temp_store_dir='temp', verbose=0):
         """Private Generator for the 'train' method of this object.
 
         Note that this uses the saved 'encoding' in STORE_DIR (generated by the
@@ -302,9 +300,12 @@ class ChatBot:
         STORE_DIR.
 
         :param batch_size: The size of the batch used in training.
-        :param store_dir: he directory in which the encoding is stored in.
+        :param temp_store_dir: he directory in which the encoding is stored in.
+        :param verbose: update messages during execution.
         :return: A generator.
         """
+        directory = f"{temp_store_dir}/DEV"
+        # TODO: THIS SHIT NEXT...
         pass
 
     def _create_training_generator(self, data_file, sentence_limit, batch_size=32):
@@ -384,7 +385,7 @@ class ChatBot:
 
             yield X_1, X_2, Y, "{}/{}".format(batch_number, total_batch_count)
 
-    def train(self, data_file, sentence_length_limit, epoch, batch_size=32, split_percentage=0.35, verbose=0):
+    def train(self, data_file, epoch, temp_store_dir='temp', batch_size=32, split_percentage=0.35, verbose=0):
         """
         Trains the chatbot's encoder and decoder LSTMs (= the Seq2Seq model).
 
@@ -395,7 +396,6 @@ class ChatBot:
         Note that said file needs to be in the same dir as this script.
 
         :param data_file: the data being train on. Must follow format above.
-        :param sentence_length_limit: the max length of a sentence used in training.
         :param epoch: number of epochs in training.
         :param batch_size: size of the batch in training.
         :param split_percentage: a float between 0 and 1. It is the percentage of
@@ -408,16 +408,14 @@ class ChatBot:
             print(model.summary())
 
         print("-==Preparing Training Data==-")
-        self._encode_and_store_training_data(data_file=data_file,
-                                             sentence_limit=sentence_length_limit,
-                                             verbose=verbose)
+        self._encode_and_store_training_data(data_file=data_file, temp_store_dir=temp_store_dir, verbose=verbose)
         sys.exit(1)
 
         print("\n\n-==TRAINING=--\n")
         for ep in range(epoch):
             batch_gen = self._create_training_generator(data_file=data_file,
                                                         batch_size=batch_size,
-                                                        sentence_limit=sentence_length_limit)
+                                                        sentence_limit=20)
             for X_1, X_2, Y, batch_counter in batch_gen:
                 if verbose:
                     sys.stdout.flush()
@@ -483,7 +481,7 @@ def get_options():
                     help="The number of time setps for the decoder. Default = 20.")
     opts.add_option('-v', '--vocab_size', dest='vocab_size', type=int, default=10000,
                     help='The size of the vocab of the Chatbot. Default = 10000')
-    opts.add_option('-V', '--vocab_file', dest='vocab_file', type=str, default="Cornell_Movie_Dialogs_Data.json",
+    opts.add_option('-f', '--vocab_file', dest='vocab_file', type=str, default="Cornell_Movie_Dialogs_Data.json",
                     help="The directory of the file that is used to define the vocab. "
                          "This file must be a json file that contains a list of question-answer"
                          "pairs/lists. Reference the included/default file for details."
@@ -491,8 +489,10 @@ def get_options():
     opts.add_option("-I", '--ignore_cached_vocab', action="store_true", dest="ignore_cached_vocab",
                     help="Forces the script to ignore the cached vocab file. "
                          "Thus creating a new vocab file (and cached vocab file) for training.")
-    opts.add_option("-S", '--save', action="store_true", dest="save_model",
-                    help="Saves the model and respective vocab after it is trained.")
+    opts.add_option("-N", '--NER', action="store_true", dest="NER_enabled",
+                    help="Toggles the use of Name Entity Recognition as part of the chatbot model. "
+                         "Note that NER adds a considerable amount of complexity in encoding"
+                         "the training data.")
     opts.add_option("-M", '--verbose', action="store_true", dest="verbose",
                     help="Toggles verbose on.")
     opts.add_option('-d', '--data_file', dest='data_file', type=str, default="Cornell_Movie_Dialogs_Data.json",
@@ -500,9 +500,6 @@ def get_options():
                          "This file must be a json file that contains a list of question-answer"
                          "pairs/lists. Reference the included/default file for details."
                          "Default = 'Cornell_Movie_Dialogs_Data.json'")
-    opts.add_option('-L', '--sentence_length_limit', dest='sentence_length_limit', type=int, default=20,
-                    help="The max (token) length of all sentences in the data used for training. "
-                         "Default = 20.")
     opts.add_option('-e', '--epoch', dest='epoch', type=int, default=500,
                     help="The number of epochs for training. Default = 100.")
     opts.add_option('-b', '--batch_size', dest='batch_size', type=int, default=32,
@@ -510,6 +507,13 @@ def get_options():
     opts.add_option('-s', '--split', dest='split', type=float, default=0.35,
                     help="The percentage (val between 0 - 1) of data held out for validation. "
                          "Default = 0.35")
+    opts.add_option('-t', '--temp_store_dir', dest='temp_store_dir', type=str, default="temp",
+                    help="The directory used to store all temporary files. Note that this "
+                         "directory is heavily used during training so its recommended to use/make "
+                         "a RAM disk for this directory. Default = 'temp'.")
+    opts.add_option('-m', '--saved_models_dir', dest='saved_models_dir', type=str, default="saved_models",
+                    help="The directory for all of the saved (trained) models. "
+                         "Default = 'saved_models'")
     return opts.parse_args()[0]
 
 
@@ -533,16 +537,17 @@ def get_saved_model_dir():
 
 
 if __name__ == "__main__":
-    # TODO: FILE WRITE / READ BATCH GENERATOR.
-    # TODO: refactor for efficientcy and clenlyness.
-    # TODO: Documentation
+    # TODO: IMPLEMENTED AND TEST DECODER NER FEATURES.
+    # TODO: ALSO TEST MODELS THAT DO NOT HAVE NERs.
+    # TODO: refactor for efficientcy and clenlyness and names of files...
+    # TODO: Documentation & REFACTOR TO REMOVE REDUNDANT INFO.
     # TODO: First Time installer...
     # TODO: publish README...
     opts = get_options()
-    if not os.path.exists("temp"):
-        os.makedirs("temp")
-    if not os.path.exists("saved_models"):
-        os.makedirs("saved_models")
+    if not os.path.exists(opts.temp_store_dir):
+        os.makedirs(opts.temp_store_dir)
+    if not os.path.exists(opts.saved_models_dir):
+        os.makedirs(opts.saved_models_dir)
 
     sys.stdout.write("\rLoad a saved model? (y/n) ")
     sys.stdout.flush()
@@ -551,7 +556,7 @@ if __name__ == "__main__":
     saved_model_dir = get_saved_model_dir() if user_input[0].lower() == 'y' else None
 
     if saved_model_dir is not None:
-        chat_bot = pickle.load(open(f"saved_models/{saved_model_dir}/chatbot.pickle", 'rb'))
+        chat_bot = pickle.load(open(f"{opts.saved_models_dir}/{saved_model_dir}/chatbot.pickle", 'rb'))
         print(f"\nLoaded model: {saved_model_dir}")
     else:
         new_model_name = None
@@ -565,12 +570,12 @@ if __name__ == "__main__":
             sys.stdout.flush()
             new_model_name = input()
 
-        chat_bot = ChatBot(opts.N_in, opts.N_out, opts.vocab_size, opts.vocab_file, opts.ignore_cached_vocab)
-        chat_bot.train(opts.data_file, opts.sentence_length_limit,
-                       opts.epoch, opts.batch_size, opts.split, opts.verbose)
+        chat_bot = ChatBot(opts.N_in, opts.N_out, opts.vocab_size, opts.vocab_file,
+                           opts.ignore_cached_vocab, opts.NER_enabled)
+        chat_bot.train(opts.data_file, opts.epoch, opts.temp_store_dir, opts.batch_size, opts.split, opts.verbose)
 
         if new_model_name:
-            new_model_path = f"saved_models/{new_model_name}"
+            new_model_path = f"{opts.saved_models_dir}/{new_model_name}"
             if not os.path.exists(new_model_path):
                 os.mkdir(new_model_path)
             pickle.dump(chat_bot, open(f"{new_model_path}/chatbot.pickle", 'wb'))
