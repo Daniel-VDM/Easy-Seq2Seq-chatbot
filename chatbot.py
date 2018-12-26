@@ -1,5 +1,4 @@
 import numpy as np
-import nltk
 import os
 import sys
 import pickle
@@ -7,8 +6,10 @@ import itertools
 import spacy
 import shutil
 import json
-from optparse import OptionParser
+import re
+import nltk
 from collections import deque
+from optparse import OptionParser
 from keras.models import Model
 from keras.layers import Input
 from keras.layers import LSTM
@@ -50,6 +51,8 @@ def define_models(n_input, n_output, n_units):
 
 class ChatBot:
 
+    # TODO: major refactoring of logic to make it presentable.
+
     def __init__(self, n_in, n_out, vocab_size, vocab_file, ignore_cached_vocab=False, ner_enabled=True):
         self.ner_enabled = ner_enabled
 
@@ -67,6 +70,8 @@ class ChatBot:
                 print("Exception encountered when reading vocab data: {}".format(e))
                 data_vocab_dicts = self._create_and_cache_vocab(vocab_file, vocab_size, ner_enabled)
         else:
+            if not os.path.isfile("cached_vocab.pickle") and not ignore_cached_vocab:
+                print("No cached vocab file found.")
             data_vocab_dicts = self._create_and_cache_vocab(vocab_file, vocab_size, ner_enabled)
 
         self.n_in, self.n_out = n_in, n_out
@@ -74,14 +79,11 @@ class ChatBot:
         self.word_to_id_dict = data_vocab_dicts["word_to_id"]
         self.id_to_word_dict = data_vocab_dicts["id_to_word"]
         self.encoder, self.decoder = None, None
+        self._encoded_x1, self._encoded_x2, self._encoded_y = None, None, None
 
         if self.ner_enabled:
             self.ner_tokens = data_vocab_dicts["NER_tokens"]
             self.ner_label_to_token_dict = data_vocab_dicts["NER_label_to_token_dict"]
-
-    def __del__(self):
-        # TODO: delete temp files...
-        pass
 
     def __bool__(self):
         return self.encoder is not None and self.decoder is not None
@@ -91,12 +93,15 @@ class ChatBot:
         """
         Private Static Method.
 
-        Creates and pickle's vocab from VOCAB_FILE. Note that VOCAB_FILE
-        is expected to come as a json file where said file is a list of
-        question-answer pairs:
+        Creates and pickles a vocab from VOCAB_FILE. Note that VOCAB_FILE
+        is expected to come as a json file where said file has a list of
+        question-answer pairs saved as 'vocab_data':
             For example:
                 [...,["Did you change your hair?", "No."], ["Hi!", "Hello."],...]
-        Note that said file needs to be in the same dir as this script.
+        Note that said json file needs to be in the same dir as this script.
+
+        TODO: create a handel for vocab files that are NOT question answer pairs.
+            MAKE THIS A JSON FILE EDIT CHANGE on the vocab_data selection......
 
         Vocab uses most frequent words first when truncating the vocab to
         fit the vocab size.
@@ -108,14 +113,14 @@ class ChatBot:
 
         TO SELF: This should be improved in the future to incorperate a better NER tagger
         that takes advantage for the Cornell DB structure. I.E NLP the whole movie and
-        tag from there...
+        tag from there... CAN BE DONE WITH DIFFERENT JASON FORMAT.
 
-        :param vocab_file: file name of the jason vocab file used to generate the vocab.
+        :param vocab_file: file name of the jason file containing vocab data.
         :param vocab_size: the fixed size of the vocab.
         :param ner_enabled: toggles NER encoding for vocab.
         """
         word_freq, i = {}, 0
-        vocab_data = json.load(open(vocab_file))
+        vocab_data = json.load(open(vocab_file))["vocab_data"]
         ner_label_tokens = set()
         ner_tokens = set()
         ner_label_to_token_dict = {}
@@ -130,17 +135,15 @@ class ChatBot:
                             ner_label_to_token_dict[f"<{entity.label_}>"].add(wrd)
                         else:
                             ner_label_to_token_dict[f"<{entity.label_}>"] = {wrd}
-
             for tok in itertools.chain(nltk.word_tokenize(question), nltk.word_tokenize(answer)):
-                if tok.isalpha() and tok not in ner_tokens:
+                if bool(re.search('[a-zA-Z]', tok)) and tok not in ner_tokens:
                     tok = tok.lower()
                     if tok in word_freq:
                         word_freq[tok] += 1
                     else:
                         word_freq[tok] = 1
-
             i += 1
-            sys.stdout.write(f"\rCreating Vocab, parsing {i}/{len(vocab_data)} question-answer pairs.")
+            sys.stdout.write(f"\rCreating Vocab, parsed {i}/{len(vocab_data)} lines of vocab data.")
             sys.stdout.flush()
 
         special_tokens = ["<PADD>", "<START>", "<UNK>"] + list(ner_label_tokens)
@@ -224,7 +227,7 @@ class ChatBot:
         """
         sentence = sentence.strip()
         unk_token_id = self.word_to_id_dict["<UNK>"]
-        sentence_tokens = list(filter(lambda s: s.isalpha(), nltk.word_tokenize(sentence)))
+        sentence_tokens = list(filter(lambda s: bool(re.search('[a-zA-Z]', s)), nltk.word_tokenize(sentence)))
         length = length if length else len(sentence_tokens)
         vector = np.zeros(length, dtype=int)
 
@@ -242,10 +245,13 @@ class ChatBot:
             vector[i] = word_id
         return vector
 
-    def _encode_and_store_training_data(self, data_file, temp_store_dir='temp', verbose=0):
+    def _create_and_save_encoding(self, training_data_pairs, verbose=0):
         """
         Private method to create and save an 'encoded' version of the training data
-        (from DATA_FILE) to the STORE_DIR directory.
+        (from DATA_FILE) so that the generator does not have to do this work
+        every time it is called.
+
+        Said list of encodings are saved as private instance attrs.
 
         The 'encoding' is as follows:
             Given a sentence, we create an array/vector of size N_in or N_out
@@ -256,146 +262,84 @@ class ChatBot:
         Note each question in the training data gets its own vector & file and
         each answer gets 2 vectors & files (one of them is shifted by 1 time step).
 
-        :param data_file: The data file from the 'train' method. ()
-        :param temp_store_dir: The directory in which the encoding is stored in.
+        :param training_data_pairs: A list of question answer pairs as training data.
         :param verbose: update messages during execution.
         :return: The number question-answer pairs encoded.
         """
-
         def is_valid_data(question, answer):
-            q_toks = [tok for tok in nltk.word_tokenize(question) if tok.isalpha()]
-            a_toks = [tok for tok in nltk.word_tokenize(answer) if tok.isalpha()]
+            q_toks = [tok for tok in nltk.word_tokenize(question) if bool(re.search('[a-zA-Z]', tok))]
+            a_toks = [tok for tok in nltk.word_tokenize(answer) if bool(re.search('[a-zA-Z]', tok))]
             return len(q_toks) <= self.n_in and len(a_toks) <= self.n_out
 
-        count = 0
-        # directory = f"{temp_store_dir}/{id(self)}"
-        directory = f"{temp_store_dir}/DEV"
-        data = json.load(open(data_file))
+        encoded_x1, encoded_x2, encoded_y = [], [], []
 
-        if not os.path.exists(directory):
-            os.makedirs(directory)
-
-        for i, (q, a) in enumerate(data):
+        print("-==Preparing Training Data==-")
+        for i, (q, a) in enumerate(training_data_pairs):
             if is_valid_data(q, a):
                 q_vec = self.vectorize(q, self.n_in)
                 a_vec = self.vectorize(a, self.n_out)
                 a_shift_vec = np.roll(a_vec, 1)
                 a_shift_vec[0] = self.word_to_id_dict["<START>"]
-                pickle.dump(q_vec, open(f"{directory}/{count}_x1.pickle", 'wb'))
-                pickle.dump(a_vec, open(f"{directory}/{count}_y.pickle", 'wb'))
-                pickle.dump(a_shift_vec, open(f"{directory}/{count}_x2.pickle", 'wb'))
-                count += 1
+                encoded_x1.append(q_vec)
+                encoded_y.append(a_vec)
+                encoded_x2.append(a_shift_vec)
             if verbose:
-                sys.stdout.write(f"\rVectorizing Training data {i}/{len(data)}")
+                sys.stdout.write(f"\rVectorizing Training data {i}/{len(training_data_pairs)}")
                 sys.stdout.flush()
 
-        return count
+        self._encoded_x1, self._encoded_x2, self._encoded_y = encoded_x1, encoded_x2, encoded_y
+        return True
 
-    def _training_vectors_generator(self, batch_size=32, temp_store_dir='temp', verbose=0):
-        """Private Generator for the 'train' method of this object.
+    def batch_generator(self, batch_size=32):
+        """
+        A generator that generates a list (length = BATCH_SIZE) of one-hot encoded
+        vectors of the training data at each yield.
 
-        Note that this uses the saved 'encoding' in STORE_DIR (generated by the
-        '_encode_and_store_training_data' method) to create the one-hot matrices
-        used for training. Said encodings are identified by this object's ID in
-        STORE_DIR.
+        Each batch is a randomized selection of un-yielded training data.
+
+        IMPORTANT:
+        This generator relies on the private method '_create_and_save_encoding' being
+        called once before this generator's call as it requires the encodings that
+        said method creates.
 
         :param batch_size: The size of the batch used in training.
-        :param temp_store_dir: he directory in which the encoding is stored in.
-        :param verbose: update messages during execution.
-        :return: A generator.
+        :return: The number question-answer pairs encoded.
         """
-        directory = f"{temp_store_dir}/DEV"
-        # TODO: THIS SHIT NEXT...
-        pass
+        if not self._encoded_x1 or not self._encoded_x2 or not self._encoded_y:
+            raise RuntimeError("Attempted to generate one-hot encodings without encoded training data.")
 
-    def _create_training_generator(self, data_file, sentence_limit, batch_size=32):
-        """
-        A generator that yields batches of one-hot encoded sentences for
-        the Seq2Seq model.
-
-        DATA_FILE is expected to come from 'self.train' method's DATA_FILE argument.
-
-        Also, one-hot encoding comes from the vocab's dictionaries.
-
-        :param data_file: The data file from the 'train' method.
-        :param sentence_limit: The sentence limit for all sentences in the training data.
-        :param batch_size: The size of the batch used in training.
-        """
-        q_and_a_lst = []
-
-        data = open(data_file, encoding='utf-8', errors='ignore').read().split('\n')
-        if not data[-1]:
-            data.pop()
-
-        for i in range(len(data) - 1):
-            line_a, a_uter, a_mov, _, a_text = data[i].split("\t")[:5]
-            line_b, b_uter, b_mov, _, b_text = data[i + 1].split("\t")[:5]
-            line_a = int("".join([s for s in line_a if s.isdigit()]))
-            line_b = int("".join([s for s in line_b if s.isdigit()]))
-
-            if a_uter != b_uter and a_mov == b_mov and line_b == line_a + 1 \
-                    and len(a_text.split(" ")) <= sentence_limit \
-                    and len(b_text.split(" ")) <= sentence_limit:
-                q_and_a_lst.append((a_text.strip(), b_text.strip()))
-
-        batch_number, doc_number = 0, 0
-        total_batch_count = int(np.ceil(len(q_and_a_lst) / batch_size))
-        np.random.shuffle(q_and_a_lst)
-        queue = deque(q_and_a_lst)
+        lst = list(range(len(self._encoded_y)))
+        np.random.shuffle(lst)
+        queue = deque(lst)
+        batch_num = 0
 
         while queue:
-            batch_size = min(len(queue), batch_size)
-            lst = [queue.pop() for _ in range(batch_size)]
+            this_batch_size = min(batch_size, len(queue))
+            X_1_encoded = np.empty(this_batch_size, dtype=bytearray)
+            X_2_encoded = np.empty(this_batch_size, dtype=bytearray)
+            Y_encoded = np.empty(this_batch_size, dtype=bytearray)
+            for i in range(this_batch_size):
+                encoded_index = queue.pop()
+                X_1_encoded[i] = self._encoded_x1[encoded_index]
+                X_2_encoded[i] = self._encoded_x2[encoded_index]
+                Y_encoded[i] = self._encoded_y[encoded_index]
+            X_1 = self._array_one_hot_encode(X_1_encoded, self.n_in, len(self.word_to_id_dict))
+            X_2 = self._array_one_hot_encode(X_2_encoded, self.n_out, len(self.word_to_id_dict))
+            Y = self._array_one_hot_encode(Y_encoded, self.n_out, len(self.word_to_id_dict))
+            batch_num += 1
+            yield X_1, X_2, Y, f"{batch_num}/{int(np.ceil(len(lst)/batch_size))}"
 
-            questions = map(lambda tup: tup[0], lst)
-            answers = map(lambda tup: tup[1], lst)
-
-            X_1 = np.empty((batch_size,), dtype=bytearray)
-            X_2 = np.empty((batch_size,), dtype=bytearray)
-            Y = np.empty((batch_size,), dtype=bytearray)
-
-            # Create training vectors from read data.
-            for index, question in enumerate(questions):
-                X_1[index] = self.vectorize(question)
-
-                doc_number += 1
-                sys.stdout.write("\rVectorizing Training data {}/{}".format(doc_number, 2 * len(q_and_a_lst)))
-                sys.stdout.flush()
-
-            for index, answer in enumerate(answers):
-                vector = self.vectorize(answer)
-                Y[index] = vector
-                vector = [self.word_to_id_dict["<START>"]] + list(vector)[:-1]
-                X_2[index] = np.array(vector)
-
-                doc_number += 1
-                sys.stdout.write("\rVectorizing Training data {}/{}".format(doc_number, 2 * len(q_and_a_lst)))
-                sys.stdout.flush()
-
-            X_1 = sequence.pad_sequences(X_1, maxlen=self.n_in, padding='post')
-            X_2 = sequence.pad_sequences(X_2, maxlen=self.n_out, padding='post')
-            Y = sequence.pad_sequences(Y, maxlen=self.n_out, padding='post')
-
-            encode_len = len(self.word_to_id_dict)
-            X_1 = self._array_one_hot_encode(X_1, self.n_in, encode_len)
-            X_2 = self._array_one_hot_encode(X_2, self.n_out, encode_len)
-            Y = self._array_one_hot_encode(Y, self.n_out, encode_len)
-
-            batch_number += 1
-
-            yield X_1, X_2, Y, "{}/{}".format(batch_number, total_batch_count)
-
-    def train(self, data_file, epoch, temp_store_dir='temp', batch_size=32, split_percentage=0.35, verbose=0):
+    def train(self, data_file, epoch, batch_size=32, split_percentage=0.35, verbose=0):
         """
         Trains the chatbot's encoder and decoder LSTMs (= the Seq2Seq model).
 
         Note that DATA_FILE is expected to come as a json file where said
-        file is a list of question-answer pairs:
-            For example:
+        file is has a list of question-answer pairs saved as 'question_answer_pairs'.
+            Said list has the following form:
                 [...,["Did you change your hair?", "No."], ["Hi!", "Hello."],...]
         Note that said file needs to be in the same dir as this script.
 
-        :param data_file: the data being train on. Must follow format above.
+        :param data_file: The json file containing the question-answer pairs.
         :param epoch: number of epochs in training.
         :param batch_size: size of the batch in training.
         :param split_percentage: a float between 0 and 1. It is the percentage of
@@ -407,15 +351,11 @@ class ChatBot:
         if verbose:
             print(model.summary())
 
-        print("-==Preparing Training Data==-")
-        self._encode_and_store_training_data(data_file=data_file, temp_store_dir=temp_store_dir, verbose=verbose)
-        sys.exit(1)
+        self._create_and_save_encoding(training_data_pairs=json.load(open(data_file))["question_answer_pairs"],
+                                       verbose=verbose)
 
-        print("\n\n-==TRAINING=--\n")
         for ep in range(epoch):
-            batch_gen = self._create_training_generator(data_file=data_file,
-                                                        batch_size=batch_size,
-                                                        sentence_limit=20)
+            batch_gen = self.batch_generator(batch_size=batch_size)
             for X_1, X_2, Y, batch_counter in batch_gen:
                 if verbose:
                     sys.stdout.flush()
@@ -489,7 +429,7 @@ def get_options():
     opts.add_option("-I", '--ignore_cached_vocab', action="store_true", dest="ignore_cached_vocab",
                     help="Forces the script to ignore the cached vocab file. "
                          "Thus creating a new vocab file (and cached vocab file) for training.")
-    opts.add_option("-N", '--NER', action="store_true", dest="NER_enabled",
+    opts.add_option("-N", '--NER_enabled', action="store_true", dest="NER_enabled",
                     help="Toggles the use of Name Entity Recognition as part of the chatbot model. "
                          "Note that NER adds a considerable amount of complexity in encoding"
                          "the training data.")
@@ -507,10 +447,6 @@ def get_options():
     opts.add_option('-s', '--split', dest='split', type=float, default=0.35,
                     help="The percentage (val between 0 - 1) of data held out for validation. "
                          "Default = 0.35")
-    opts.add_option('-t', '--temp_store_dir', dest='temp_store_dir', type=str, default="temp",
-                    help="The directory used to store all temporary files. Note that this "
-                         "directory is heavily used during training so its recommended to use/make "
-                         "a RAM disk for this directory. Default = 'temp'.")
     opts.add_option('-m', '--saved_models_dir', dest='saved_models_dir', type=str, default="saved_models",
                     help="The directory for all of the saved (trained) models. "
                          "Default = 'saved_models'")
@@ -539,13 +475,12 @@ def get_saved_model_dir():
 if __name__ == "__main__":
     # TODO: IMPLEMENTED AND TEST DECODER NER FEATURES.
     # TODO: ALSO TEST MODELS THAT DO NOT HAVE NERs.
+    # TODO: HIGHARCHICAL STRUCTURE FOR PUBLISHING...
     # TODO: refactor for efficientcy and clenlyness and names of files...
     # TODO: Documentation & REFACTOR TO REMOVE REDUNDANT INFO.
     # TODO: First Time installer...
     # TODO: publish README...
     opts = get_options()
-    if not os.path.exists(opts.temp_store_dir):
-        os.makedirs(opts.temp_store_dir)
     if not os.path.exists(opts.saved_models_dir):
         os.makedirs(opts.saved_models_dir)
 
@@ -572,7 +507,7 @@ if __name__ == "__main__":
 
         chat_bot = ChatBot(opts.N_in, opts.N_out, opts.vocab_size, opts.vocab_file,
                            opts.ignore_cached_vocab, opts.NER_enabled)
-        chat_bot.train(opts.data_file, opts.epoch, opts.temp_store_dir, opts.batch_size, opts.split, opts.verbose)
+        chat_bot.train(opts.data_file, opts.epoch, opts.batch_size, opts.split, opts.verbose)
 
         if new_model_name:
             new_model_path = f"{opts.saved_models_dir}/{new_model_name}"
