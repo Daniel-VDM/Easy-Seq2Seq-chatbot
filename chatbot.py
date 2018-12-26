@@ -74,16 +74,22 @@ class ChatBot:
                 print("No cached vocab file found.")
             data_vocab_dicts = self._create_and_cache_vocab(vocab_file, vocab_size, ner_enabled)
 
+        self.vocab_file = vocab_file
         self.n_in, self.n_out = n_in, n_out
         self.vocab_size = vocab_size
         self.word_to_id_dict = data_vocab_dicts["word_to_id"]
         self.id_to_word_dict = data_vocab_dicts["id_to_word"]
         self.encoder, self.decoder = None, None
         self._encoded_x1, self._encoded_x2, self._encoded_y = None, None, None
+        self.last_trained_file = None
 
         if self.ner_enabled:
             self.ner_tokens = data_vocab_dicts["NER_tokens"]
             self.ner_label_to_token_dict = data_vocab_dicts["NER_label_to_token_dict"]
+
+    def __str__(self):
+        return f"ChatBot Object: N_in={self.n_in}, N_out={self.n_out}, Vocab Size={self.vocab_size},\
+                 Vocab File={self.vocab_file}, NER={self.ner_enabled}, Training Data={self.last_trained_file}."
 
     def __bool__(self):
         return self.encoder is not None and self.decoder is not None
@@ -159,7 +165,7 @@ class ChatBot:
             dump = {"word_to_id": {c: i for i, c in enumerate(itertools.chain(special_tokens, vocab))},
                     "id_to_word": {i: c for i, c in enumerate(itertools.chain(special_tokens, vocab))}}
         pickle.dump(dump, open("cached_vocab.pickle", 'wb'))
-        print("\nCached vocab file.")
+        print(f"\nCached vocab file. Vocab size = {vocab_size}, Vocab Data = {vocab_file}")
         return dump
 
     @staticmethod
@@ -247,7 +253,9 @@ class ChatBot:
 
     def _create_and_save_encoding(self, training_data_pairs, verbose=0):
         """
-        Private method to create and save an 'encoded' version of the training data
+        Private method for the 'train' & 'batch_generator' methods of this class.
+
+        This method creates and saves an 'encoded' version of the training data
         (from DATA_FILE) so that the generator does not have to do this work
         every time it is called.
 
@@ -346,6 +354,8 @@ class ChatBot:
                                  training data held out for validation.
         :param verbose: update messages during training.
         """
+        self.last_trained_file = data_file
+
         model, encoder, decoder = define_models(len(self.word_to_id_dict), len(self.id_to_word_dict), 128)
         model.compile(optimizer='adam', loss='categorical_crossentropy')
         if verbose:
@@ -366,6 +376,8 @@ class ChatBot:
                           validation_data=([X_1v, X_2v], Y_v), verbose=verbose)
         self.encoder = encoder
         self.decoder = decoder
+        self._encoded_x1, self._encoded_x2, self._encoded_y = None, None, None
+        return True
 
     def _predict(self, X_in):
         """ Private method used for main chat loop.
@@ -415,12 +427,13 @@ class ChatBot:
 
 def get_options():
     opts = OptionParser()
+    # TODO: train a model where N_in = N_out.
     opts.add_option('-i', '--N_in', dest='N_in', type=int, default=10,
                     help="The number of time steps for the encoder. Default = 10.")
     opts.add_option('-o', '--N_out', dest='N_out', type=int, default=20,
                     help="The number of time setps for the decoder. Default = 20.")
-    opts.add_option('-v', '--vocab_size', dest='vocab_size', type=int, default=10000,
-                    help='The size of the vocab of the Chatbot. Default = 10000')
+    opts.add_option('-v', '--vocab_size', dest='vocab_size', type=int, default=12000,
+                    help='The size of the vocab of the Chatbot. Default = 12000')
     opts.add_option('-f', '--vocab_file', dest='vocab_file', type=str, default="Cornell_Movie_Dialogs_Data.json",
                     help="The directory of the file that is used to define the vocab. "
                          "This file must be a json file that contains a list of question-answer"

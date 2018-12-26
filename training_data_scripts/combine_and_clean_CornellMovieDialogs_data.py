@@ -10,14 +10,14 @@ sys.stdout.write("What is the Cornell Movie Dialog file name? ")
 sys.stdout.flush()
 file_name = input()
 
-sys.stdout.write("\rName of this newly generated vocab file? ")
-sys.stdout.flush()
-out_file_name = input()
-
 data = open(file_name, encoding='utf-8', errors='ignore').read().split('\n')
 
 if not data[-1]:
     data.pop()
+
+sys.stdout.write("\rName of this newly generated vocab file? ")
+sys.stdout.flush()
+out_file_name = input()
 
 line_num = 0
 for i in range(len(data) - 1):
