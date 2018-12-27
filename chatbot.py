@@ -84,12 +84,14 @@ class ChatBot:
         self.word_to_id_dict = data_vocab_dicts["word_to_id"]
         self.id_to_word_dict = data_vocab_dicts["id_to_word"]
         self.encoder, self.decoder = None, None
-        self._encoded_x1, self._encoded_x2, self._encoded_y = None, None, None
         self.last_trained_file = None
 
         if self.ner_enabled:
             self.ner_tokens = data_vocab_dicts["NER_tokens"]
             self.ner_label_to_token_dict = data_vocab_dicts["NER_label_to_token_dict"]
+
+        self._encoded_x1, self._encoded_x2, self._encoded_y = None, None, None
+        self._train_QA_pairs = []
 
     def __str__(self):
         return f"ChatBot Object: N_in={self.n_in}, N_out={self.n_out}, Vocab Size={self.vocab_size},\
@@ -257,18 +259,18 @@ class ChatBot:
             vector[i] = word_id
         return vector
 
-    def has_encoded(self, training_data_pairs):
+    def has_valid_encodings(self):
         """
-        Check if the current instance has an encoding that matches the training data pairs
-        and the current instance's vocab.
+        Check if the current instance has encodings that uses the instance's vocab.
         """
-        if self._encoded_x1 is None or self._encoded_x2 is None or self._encoded_y is None:
+        if self._encoded_x1 is None or self._encoded_x2 is None \
+                or self._encoded_y is None or self._train_QA_pairs == []:
             return False
         if len(self._encoded_x1) != len(self._encoded_x2) != len(self._encoded_y):
             return False
         arr = np.random.choice(len(self._encoded_x1), size=min(10, len(self._encoded_x1)), replace=False)
         for i in arr:
-            question_str, answer_str = training_data_pairs[i]
+            question_str, answer_str = self._train_QA_pairs[i]
 
             q_vec_ref = self.vectorize(question_str, self.n_in)
             a_vec_ref = self.vectorize(answer_str, self.n_out)
@@ -311,22 +313,13 @@ class ChatBot:
             a_toks = [tok for tok in nltk.word_tokenize(answer) if bool(re.search('[a-zA-Z]', tok))]
             return len(q_toks) <= self.n_in and len(a_toks) <= self.n_out
 
-        if not self.ignore_cache and os.path.isfile("cache/x1.pickle") \
-                and os.path.isfile("cache/x2.pickle") and os.path.isfile("cache/y.pickle"):
-            self._encoded_x1 = pickle.load(open("cache/x1.pickle", 'rb'))
-            self._encoded_x2 = pickle.load(open("cache/x2.pickle", 'rb'))
-            self._encoded_y = pickle.load(open("cache/y.pickle", 'rb'))
-
-        if self.has_encoded(training_data_pairs):
-            print("[!] Using cached training data encodings.")
-            print(f"Size of encoded training data: {len(self._encoded_x1)}")
-            return True
-
         encoded_x1, encoded_x2, encoded_y = [], [], []
+        train_QA_pairs = []
 
         print("-==Encoding Training Data==-")
         for i, (q, a) in enumerate(training_data_pairs):
             if is_valid_data(q, a):
+                train_QA_pairs.append((q, a))
                 q_vec = self.vectorize(q, self.n_in)
                 a_vec = self.vectorize(a, self.n_out)
                 a_shift_vec = np.roll(a_vec, 1)
@@ -337,15 +330,17 @@ class ChatBot:
             if verbose:
                 sys.stdout.write(f"\rProcessed {i}/{len(training_data_pairs)} Question-Answer Pairs.")
                 sys.stdout.flush()
+        print("")
 
         self._encoded_x1, self._encoded_x2, self._encoded_y = encoded_x1, encoded_x2, encoded_y
+        self._train_QA_pairs = train_QA_pairs
 
         pickle.dump(encoded_x1, open("cache/x1.pickle", 'wb'))
         pickle.dump(encoded_x2, open("cache/x2.pickle", 'wb'))
         pickle.dump(encoded_y, open("cache/y.pickle", 'wb'))
-        print(f"Cached encoded training data.")
-        print(f"Size of encoded training data: {len(self._encoded_x1)}")
-        sys.exit(1)
+        pickle.dump(train_QA_pairs, open("cache/train_QA_pairs.pickle", 'wb'))
+
+        print("Cached encoded training data.")
         return True
 
     def batch_generator(self, batch_size=32):
@@ -387,7 +382,7 @@ class ChatBot:
             batch_num += 1
             yield X_1, X_2, Y, f"{batch_num}/{int(np.ceil(len(lst)/batch_size))}"
 
-    def train(self, data_file, epoch, batch_size=32, split_percentage=0.35, verbose=0):
+    def train(self, data_file, epoch, batch_size=32, split_percentage=0.35, force_encode=False, verbose=0):
         """
         Trains the chatbot's encoder and decoder LSTMs (= the Seq2Seq model).
 
@@ -402,6 +397,8 @@ class ChatBot:
         :param batch_size: size of the batch in training.
         :param split_percentage: a float between 0 and 1. It is the percentage of
                                  training data held out for validation.
+        :param force_encode: Forces the script to re-encode the training data, even
+                             if there is a cached copy.
         :param verbose: update messages during training.
         """
         self.last_trained_file = data_file
@@ -411,9 +408,21 @@ class ChatBot:
         if verbose:
             print(model.summary())
 
-        self._create_and_save_encoding(training_data_pairs=json.load(open(data_file))["question_answer_pairs"],
-                                       verbose=verbose)
+        if not force_encode and not self.ignore_cache and os.path.isfile("cache/x1.pickle") \
+                and os.path.isfile("cache/x2.pickle") and os.path.isfile("cache/y.pickle")\
+                and os.path.isfile("cache/train_QA_pairs.pickle"):
+            self._encoded_x1 = pickle.load(open("cache/x1.pickle", 'rb'))
+            self._encoded_x2 = pickle.load(open("cache/x2.pickle", 'rb'))
+            self._encoded_y = pickle.load(open("cache/y.pickle", 'rb'))
+            self._train_QA_pairs = pickle.load(open("cache/train_QA_pairs.pickle", 'rb'))
 
+        if self.has_valid_encodings():
+            print("[!] Using cached training data encodings.")
+        else:
+            self._create_and_save_encoding(training_data_pairs=json.load(open(data_file))["question_answer_pairs"],
+                                           verbose=verbose)
+
+        print(f"Size of encoded training data: {len(self._encoded_x1)}")
         print(f"-==Training==-\n\tEpochs: {epoch}, Batch Size: {batch_size}, "
               f"Question-Answer Pairs: {len(self._encoded_y)}.\n")
 
@@ -493,6 +502,8 @@ def get_options():
                          "Default = 'Cornell_Movie_Dialogs_Data.json'")
     opts.add_option("-I", '--ignore_cache', action="store_true", dest="ignore_cached",
                     help="Forces the script to ignore the cached files.")
+    opts.add_option("-E", '--encode_training_data', action="store_true", dest="encode_training_data",
+                    help="Forces the script to ignore the cached encoding files,")
     opts.add_option("-N", '--NER_enabled', action="store_true", dest="NER_enabled",
                     help="Toggles the use of Name Entity Recognition as part of the chatbot model. "
                          "Note that NER adds a considerable amount of complexity in encoding"
@@ -571,7 +582,8 @@ if __name__ == "__main__":
 
         chat_bot = ChatBot(opts.N_in, opts.N_out, opts.vocab_size, opts.vocab_file,
                            opts.ignore_cached, opts.NER_enabled)
-        chat_bot.train(opts.data_file, opts.epoch, opts.batch_size, opts.split, opts.verbose)
+        chat_bot.train(opts.data_file, opts.epoch, opts.batch_size, opts.split,
+                       opts.encode_training_data, opts.verbose)
 
         if new_model_name:
             new_model_path = f"{opts.saved_models_dir}/{new_model_name}"
