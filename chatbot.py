@@ -365,6 +365,7 @@ class ChatBot:
         np.random.shuffle(lst)
         queue = deque(lst)
         batch_num = 0
+        total_batch_count = int(np.ceil(len(lst)/batch_size))
 
         while queue:
             this_batch_size = min(batch_size, len(queue))
@@ -380,7 +381,7 @@ class ChatBot:
             X_2 = self._array_one_hot_encode(X_2_encoded, self.n_out, len(self.word_to_id_dict))
             Y = self._array_one_hot_encode(Y_encoded, self.n_out, len(self.word_to_id_dict))
             batch_num += 1
-            yield X_1, X_2, Y, f"{batch_num}/{int(np.ceil(len(lst)/batch_size))}"
+            yield X_1, X_2, Y, f"{batch_num}/{total_batch_count}"
 
     def train(self, data_file, epoch, batch_size=32, split_percentage=0.35, force_encode=False, verbose=0):
         """
