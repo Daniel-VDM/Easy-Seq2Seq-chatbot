@@ -321,11 +321,12 @@ class ChatBot:
         print("-==Encoding Training Data==-")
         for i, (q, a) in enumerate(training_data_pairs):
             if is_valid_data(q, a):
-                train_QA_pairs.append((q, a))
                 q_vec = self.vectorize(q, self.n_in)
                 a_vec = self.vectorize(a, self.n_out)
                 a_shift_vec = np.roll(a_vec, 1)
                 a_shift_vec[0] = self.word_to_id_dict["<START>"]
+
+                train_QA_pairs.append((q, a))
                 encoded_x1.append(q_vec)
                 encoded_y.append(a_vec)
                 encoded_x2.append(a_shift_vec)
@@ -356,6 +357,8 @@ class ChatBot:
         This generator relies on the private method '_create_and_save_encoding' being
         called once before this generator's call as it requires the encodings that
         said method creates.
+
+        # TODO: handle the case where we have a batch of size 1.
 
         :param batch_size: The size of the batch used in training.
         :return: The number question-answer pairs encoded.
@@ -438,9 +441,11 @@ class ChatBot:
                     sys.stdout.flush()
                     sys.stdout.write('\x1b[2K')
                     print("\rEpoch: {}/{}, Batch: {}. \tTraining...".format(ep, epoch, batch_counter))
+
                 X_1t, X_2t, Y_t, X_1v, X_2v, Y_v = self._create_validation_split(X_1, X_2, Y, split_percentage)
                 model.fit([X_1t, X_2t], Y_t, epochs=1, batch_size=batch_size,
                           validation_data=([X_1v, X_2v], Y_v), verbose=verbose)
+
         self.encoder = encoder
         self.decoder = decoder
         return True
