@@ -428,8 +428,8 @@ class ChatBot:
         if self.has_valid_encodings():
             print("[!] Using cached training data encodings.")
         else:
-            self._create_and_save_encoding(training_data_pairs=json.load(open(data_file))["question_answer_pairs"],
-                                           verbose=verbose)
+            training_data_pairs = json.load(open(data_file))["question_answer_pairs"]
+            self._create_and_save_encoding(training_data_pairs=training_data_pairs, verbose=verbose)
 
         print(f"Size of encoded training data: {len(self._encoded_x1)}")
         print(f"-==Training on {len(self._encoded_y)} Question-Answer pairs==-")
