@@ -268,7 +268,8 @@ class ChatBot:
             return False
         if len(self._encoded_x1) != len(self._encoded_x2) != len(self._encoded_y):
             return False
-        arr = np.random.choice(len(self._encoded_x1), size=min(10, len(self._encoded_x1)), replace=False)
+
+        arr = np.random.choice(len(self._encoded_x1), size=min(25, len(self._encoded_x1)), replace=False)
         for i in arr:
             question_str, answer_str = self._train_QA_pairs[i]
 
@@ -281,7 +282,8 @@ class ChatBot:
             a_vec = self._encoded_y[i]
             a_shift_vec = self._encoded_x2[i]
 
-            if q_vec != q_vec_ref or a_vec != a_vec_ref or a_shift_vec != a_shift_vec_ref:
+            if not np.array_equal(q_vec, q_vec_ref) or not np.array_equal(a_vec, a_vec_ref)\
+                    or not np.array_equal(a_shift_vec, a_shift_vec_ref):
                 return False
         return True
 
@@ -424,8 +426,7 @@ class ChatBot:
                                            verbose=verbose)
 
         print(f"Size of encoded training data: {len(self._encoded_x1)}")
-        print(f"-==Training==-\n\tEpochs: {epoch}, Batch Size: {batch_size}, "
-              f"Question-Answer Pairs: {len(self._encoded_y)}.\n")
+        print(f"-==Training on {len(self._encoded_y)} Question-Answer pairs==-")
 
         for ep in range(epoch):
             batch_gen = self.batch_generator(batch_size=batch_size)
