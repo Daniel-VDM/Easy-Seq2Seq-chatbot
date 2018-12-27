@@ -364,6 +364,9 @@ class ChatBot:
         self._create_and_save_encoding(training_data_pairs=json.load(open(data_file))["question_answer_pairs"],
                                        verbose=verbose)
 
+        print(f"-==Training==-\n\tEpochs: {epoch}, Batch Size: {batch_size}, "
+              f"Question-Answer Pairs: {len(self._encoded_y)}.\n")
+
         for ep in range(epoch):
             batch_gen = self.batch_generator(batch_size=batch_size)
             for X_1, X_2, Y, batch_counter in batch_gen:
