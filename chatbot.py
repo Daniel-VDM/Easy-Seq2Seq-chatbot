@@ -335,7 +335,7 @@ class ChatBot:
                 encoded_y.append(a_vec)
                 encoded_x2.append(a_shift_vec)
             if verbose:
-                sys.stdout.write(f"\rEncoded {i}/{len(training_data_pairs)} Question-Answer Pairs.")
+                sys.stdout.write(f"\rProcessed {i}/{len(training_data_pairs)} Question-Answer Pairs.")
                 sys.stdout.flush()
 
         self._encoded_x1, self._encoded_x2, self._encoded_y = encoded_x1, encoded_x2, encoded_y
