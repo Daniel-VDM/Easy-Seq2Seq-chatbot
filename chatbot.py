@@ -374,14 +374,17 @@ class ChatBot:
             X_1_encoded = np.empty(this_batch_size, dtype=bytearray)
             X_2_encoded = np.empty(this_batch_size, dtype=bytearray)
             Y_encoded = np.empty(this_batch_size, dtype=bytearray)
+
             for i in range(this_batch_size):
                 encoded_index = queue.pop()
                 X_1_encoded[i] = self._encoded_x1[encoded_index]
                 X_2_encoded[i] = self._encoded_x2[encoded_index]
                 Y_encoded[i] = self._encoded_y[encoded_index]
+
             X_1 = self._array_one_hot_encode(X_1_encoded, self.n_in, len(self.word_to_id_dict))
             X_2 = self._array_one_hot_encode(X_2_encoded, self.n_out, len(self.word_to_id_dict))
             Y = self._array_one_hot_encode(Y_encoded, self.n_out, len(self.word_to_id_dict))
+
             batch_num += 1
             yield X_1, X_2, Y, f"{batch_num}/{total_batch_count}"
 
