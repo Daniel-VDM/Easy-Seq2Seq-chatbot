@@ -53,25 +53,29 @@ class ChatBot:
 
     # TODO: major refactoring of logic to make it presentable.
 
-    def __init__(self, n_in, n_out, vocab_size, vocab_file, ignore_cached_vocab=False, ner_enabled=True):
-        self.ner_enabled = ner_enabled
+    def __init__(self, n_in, n_out, vocab_size, vocab_file, ignore_cache=False, ner_enabled=True):
+        if not os.path.exists("cache"):
+            os.makedirs("cache")
 
-        if os.path.isfile("cached_vocab.pickle") and not ignore_cached_vocab:
+        self.ner_enabled = ner_enabled
+        self.ignore_cache = ignore_cache
+
+        if os.path.isfile("cache/vocab.pickle") and not ignore_cache:
             try:
-                data_vocab_dicts = pickle.load(open("cached_vocab.pickle", 'rb'))
+                data_vocab_dicts = pickle.load(open("cache/vocab.pickle", 'rb'))
                 if len(data_vocab_dicts["word_to_id"]) != len(data_vocab_dicts["word_to_id"]):
-                    raise ValueError("'cached_vocab.pickle' dictionary lengths do not match.")
+                    raise ValueError("'cache/vocab.pickle' dictionary lengths do not match.")
                 if len(data_vocab_dicts["word_to_id"]) != vocab_size:
-                    raise ValueError("'cached_vocab.pickle' vocab size is not {}.".format(vocab_size))
+                    raise ValueError("'cache/vocab.pickle' vocab size is not {}.".format(vocab_size))
                 if self.ner_enabled and ("NER_tokens" not in data_vocab_dicts.keys()
                                          or "NER_label_to_token_dict" not in data_vocab_dicts.keys()):
-                    raise ValueError("'cached_vocab.pickle' does not contain NER data.")
+                    raise ValueError("'cache/vocab.pickle' does not contain NER data.")
+                print("[!] Using cached vocab.")
             except Exception as e:
                 print("Exception encountered when reading vocab data: {}".format(e))
                 data_vocab_dicts = self._create_and_cache_vocab(vocab_file, vocab_size, ner_enabled)
         else:
-            if not os.path.isfile("cached_vocab.pickle") and not ignore_cached_vocab:
-                print("No cached vocab file found.")
+            print("No cached vocab file found.")
             data_vocab_dicts = self._create_and_cache_vocab(vocab_file, vocab_size, ner_enabled)
 
         self.vocab_file = vocab_file
@@ -155,16 +159,18 @@ class ChatBot:
         special_tokens = ["<PADD>", "<START>", "<UNK>"] + list(ner_label_tokens)
 
         vocab = sorted(list(word_freq.keys()), key=lambda w: word_freq.get(w, 0), reverse=True)
-        vocab = vocab[:vocab_size - len(special_tokens)]
+        vocab = special_tokens + vocab[:vocab_size - len(special_tokens)]
+
+        np.random.shuffle(vocab)  # Shuffle for validation check of cached files.
 
         if ner_enabled:
-            dump = {"word_to_id": {c: i for i, c in enumerate(itertools.chain(special_tokens, vocab))},
-                    "id_to_word": {i: c for i, c in enumerate(itertools.chain(special_tokens, vocab))},
+            dump = {"word_to_id": {c: i for i, c in enumerate(vocab)},
+                    "id_to_word": {i: c for i, c in enumerate(vocab)},
                     "NER_tokens": ner_tokens, "NER_label_to_token_dict": ner_label_to_token_dict}
         else:
-            dump = {"word_to_id": {c: i for i, c in enumerate(itertools.chain(special_tokens, vocab))},
-                    "id_to_word": {i: c for i, c in enumerate(itertools.chain(special_tokens, vocab))}}
-        pickle.dump(dump, open("cached_vocab.pickle", 'wb'))
+            dump = {"word_to_id": {c: i for i, c in enumerate(vocab)},
+                    "id_to_word": {i: c for i, c in enumerate(vocab)}}
+        pickle.dump(dump, open("cache/vocab.pickle", 'wb'))
         print(f"\nCached vocab file. Vocab size = {vocab_size}, Vocab Data = {vocab_file}")
         return dump
 
@@ -251,6 +257,32 @@ class ChatBot:
             vector[i] = word_id
         return vector
 
+    def has_encoded(self, training_data_pairs):
+        """
+        Check if the current instance has an encoding that matches the training data pairs
+        and the current instance's vocab.
+        """
+        if self._encoded_x1 is None or self._encoded_x2 is None or self._encoded_y is None:
+            return False
+        if len(self._encoded_x1) != len(self._encoded_x2) != len(self._encoded_y):
+            return False
+        arr = np.random.choice(len(self._encoded_x1), size=min(10, len(self._encoded_x1)), replace=False)
+        for i in arr:
+            question_str, answer_str = training_data_pairs[i]
+
+            q_vec_ref = self.vectorize(question_str, self.n_in)
+            a_vec_ref = self.vectorize(answer_str, self.n_out)
+            a_shift_vec_ref = np.roll(a_vec_ref, 1)
+            a_shift_vec_ref[0] = self.word_to_id_dict["<START>"]
+
+            q_vec = self._encoded_x1[i]
+            a_vec = self._encoded_y[i]
+            a_shift_vec = self._encoded_x2[i]
+
+            if q_vec != q_vec_ref or a_vec != a_vec_ref or a_shift_vec != a_shift_vec_ref:
+                return False
+        return True
+
     def _create_and_save_encoding(self, training_data_pairs, verbose=0):
         """
         Private method for the 'train' & 'batch_generator' methods of this class.
@@ -279,9 +311,20 @@ class ChatBot:
             a_toks = [tok for tok in nltk.word_tokenize(answer) if bool(re.search('[a-zA-Z]', tok))]
             return len(q_toks) <= self.n_in and len(a_toks) <= self.n_out
 
+        if not self.ignore_cache and os.path.isfile("cache/x1.pickle") \
+                and os.path.isfile("cache/x2.pickle") and os.path.isfile("cache/y.pickle"):
+            self._encoded_x1 = pickle.load(open("cache/x1.pickle", 'rb'))
+            self._encoded_x2 = pickle.load(open("cache/x2.pickle", 'rb'))
+            self._encoded_y = pickle.load(open("cache/y.pickle", 'rb'))
+
+        if self.has_encoded(training_data_pairs):
+            print("[!] Using cached training data encodings.")
+            print(f"Size of encoded training data: {len(self._encoded_x1)}")
+            return True
+
         encoded_x1, encoded_x2, encoded_y = [], [], []
 
-        print("-==Preparing Training Data==-")
+        print("-==Encoding Training Data==-")
         for i, (q, a) in enumerate(training_data_pairs):
             if is_valid_data(q, a):
                 q_vec = self.vectorize(q, self.n_in)
@@ -292,10 +335,17 @@ class ChatBot:
                 encoded_y.append(a_vec)
                 encoded_x2.append(a_shift_vec)
             if verbose:
-                sys.stdout.write(f"\rVectorizing Training data {i}/{len(training_data_pairs)}")
+                sys.stdout.write(f"\rEncoded {i}/{len(training_data_pairs)} Question-Answer Pairs.")
                 sys.stdout.flush()
 
         self._encoded_x1, self._encoded_x2, self._encoded_y = encoded_x1, encoded_x2, encoded_y
+
+        pickle.dump(encoded_x1, open("cache/x1.pickle", 'wb'))
+        pickle.dump(encoded_x2, open("cache/x2.pickle", 'wb'))
+        pickle.dump(encoded_y, open("cache/y.pickle", 'wb'))
+        print(f"Cached encoded training data.")
+        print(f"Size of encoded training data: {len(self._encoded_x1)}")
+        sys.exit(1)
         return True
 
     def batch_generator(self, batch_size=32):
@@ -379,7 +429,6 @@ class ChatBot:
                           validation_data=([X_1v, X_2v], Y_v), verbose=verbose)
         self.encoder = encoder
         self.decoder = decoder
-        self._encoded_x1, self._encoded_x2, self._encoded_y = None, None, None
         return True
 
     def _predict(self, X_in):
@@ -435,16 +484,15 @@ def get_options():
                     help="The number of time steps for the encoder. Default = 10.")
     opts.add_option('-o', '--N_out', dest='N_out', type=int, default=20,
                     help="The number of time setps for the decoder. Default = 20.")
-    opts.add_option('-v', '--vocab_size', dest='vocab_size', type=int, default=12000,
-                    help='The size of the vocab of the Chatbot. Default = 12000')
+    opts.add_option('-v', '--vocab_size', dest='vocab_size', type=int, default=10000,
+                    help='The size of the vocab of the Chatbot. Default = 10000')
     opts.add_option('-f', '--vocab_file', dest='vocab_file', type=str, default="Cornell_Movie_Dialogs_Data.json",
                     help="The directory of the file that is used to define the vocab. "
                          "This file must be a json file that contains a list of question-answer"
                          "pairs/lists. Reference the included/default file for details."
                          "Default = 'Cornell_Movie_Dialogs_Data.json'")
-    opts.add_option("-I", '--ignore_cached_vocab', action="store_true", dest="ignore_cached_vocab",
-                    help="Forces the script to ignore the cached vocab file. "
-                         "Thus creating a new vocab file (and cached vocab file) for training.")
+    opts.add_option("-I", '--ignore_cache', action="store_true", dest="ignore_cached",
+                    help="Forces the script to ignore the cached files.")
     opts.add_option("-N", '--NER_enabled', action="store_true", dest="NER_enabled",
                     help="Toggles the use of Name Entity Recognition as part of the chatbot model. "
                          "Note that NER adds a considerable amount of complexity in encoding"
@@ -522,7 +570,7 @@ if __name__ == "__main__":
             new_model_name = input()
 
         chat_bot = ChatBot(opts.N_in, opts.N_out, opts.vocab_size, opts.vocab_file,
-                           opts.ignore_cached_vocab, opts.NER_enabled)
+                           opts.ignore_cached, opts.NER_enabled)
         chat_bot.train(opts.data_file, opts.epoch, opts.batch_size, opts.split, opts.verbose)
 
         if new_model_name:
@@ -534,7 +582,7 @@ if __name__ == "__main__":
                 os.mkdir(f"{new_model_path}/backup")
             chat_bot.encoder.save_weights(f"{new_model_path}/backup/encoder.h5")
             chat_bot.decoder.save_weights(f"{new_model_path}/backup/decoder.h5")
-            shutil.copyfile("cached_vocab.pickle", f"{new_model_path}/backup/cached_vocab.pickle")
+            shutil.copytree("cache", f"{new_model_path}/backup")
             shutil.copyfile(opts.data_file, f"{new_model_path}/backup/[TRAIN_DATA]{opts.data_file}")
             shutil.copyfile(opts.vocab_file, f"{new_model_path}/backup/[VOCAB_DATA]{opts.vocab_file}")
             print(f"\nSaved the trained model to: '{new_model_path}'.")
