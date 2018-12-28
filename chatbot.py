@@ -59,6 +59,11 @@ class ChatBot:
 
         self.ner_enabled = ner_enabled
         self.ignore_cache = ignore_cache
+        self.vocab_file = vocab_file
+        self.n_in, self.n_out = n_in, n_out
+        self.vocab_size = vocab_size
+        self.encoder, self.decoder = None, None
+        self.last_trained_file = None
 
         if os.path.isfile("cache/vocab.pickle") and not ignore_cache:
             try:
@@ -78,13 +83,8 @@ class ChatBot:
             print("No cached vocab file found.")
             data_vocab_dicts = self._create_and_cache_vocab(vocab_file, vocab_size, ner_enabled)
 
-        self.vocab_file = vocab_file
-        self.n_in, self.n_out = n_in, n_out
-        self.vocab_size = vocab_size
         self.word_to_id_dict = data_vocab_dicts["word_to_id"]
         self.id_to_word_dict = data_vocab_dicts["id_to_word"]
-        self.encoder, self.decoder = None, None
-        self.last_trained_file = None
 
         if self.ner_enabled:
             self.ner_tokens = data_vocab_dicts["NER_tokens"]
@@ -105,15 +105,14 @@ class ChatBot:
         """
         Private Static Method.
 
+        # TODO: docs for this function.
+
         Creates and pickles a vocab from VOCAB_FILE. Note that VOCAB_FILE
         is expected to come as a json file where said file has a list of
         question-answer pairs saved as 'vocab_data':
             For example:
                 [...,["Did you change your hair?", "No."], ["Hi!", "Hello."],...]
         Note that said json file needs to be in the same dir as this script.
-
-        TODO: create a handel for vocab files that are NOT question answer pairs.
-            MAKE THIS A JSON FILE EDIT CHANGE on the vocab_data selection......
 
         Vocab uses most frequent words first when truncating the vocab to
         fit the vocab size.
@@ -131,38 +130,60 @@ class ChatBot:
         :param vocab_size: the fixed size of the vocab.
         :param ner_enabled: toggles NER encoding for vocab.
         """
-        word_freq, i = {}, 0
+        word_freq, count = {}, 0
         vocab_data = json.load(open(vocab_file))["vocab_data"]
         ner_label_tokens = set()
         ner_tokens = set()
         ner_label_to_token_dict = {}
 
-        for question, answer in vocab_data:
-            if ner_enabled:
-                for entity in itertools.chain(NLP(question).ents, NLP(answer).ents):
-                    ner_label_tokens.add(f"<{entity.label_}>")
-                    for wrd in nltk.word_tokenize(entity.text):
-                        ner_tokens.add(wrd)
-                        if f"<{entity.label_}>" in ner_label_to_token_dict:
-                            ner_label_to_token_dict[f"<{entity.label_}>"].add(wrd)
-                        else:
-                            ner_label_to_token_dict[f"<{entity.label_}>"] = {wrd}
-            for tok in itertools.chain(nltk.word_tokenize(question), nltk.word_tokenize(answer)):
+        def get_entity_from(nlp_ents):
+            for entity in nlp_ents:
+                ner_label_tokens.add(f"<{entity.label_}>")
+                for wrd in nltk.word_tokenize(entity.text):
+                    ner_tokens.add(wrd)
+                    if f"<{entity.label_}>" in ner_label_to_token_dict:
+                        ner_label_to_token_dict[f"<{entity.label_}>"].add(wrd)
+                    else:
+                        ner_label_to_token_dict[f"<{entity.label_}>"] = {wrd}
+
+        def get_token_freq_from(tokens):
+            for tok in tokens:
                 if bool(re.search('[a-zA-Z]', tok)) and tok not in ner_tokens:
                     tok = tok.lower()
                     if tok in word_freq:
                         word_freq[tok] += 1
                     else:
                         word_freq[tok] = 1
-            i += 1
+
+        def progress_message():
+            nonlocal count
+            count += 1
             sys.stdout.write(f"\rCreating Vocab, parsed {i}/{len(vocab_data)} lines of vocab data.")
             sys.stdout.flush()
 
-        special_tokens = ["<PADD>", "<START>", "<UNK>"] + list(ner_label_tokens)
+        try:
+            first_data_el = vocab_data[0]
+        except ValueError:
+            first_data_el = None
 
+        if type(first_data_el) == str:
+            for line in vocab_data:
+                if ner_enabled:
+                    get_entity_from(NLP(line).ents)
+                get_token_freq_from(nltk.word_tokenize(line))
+                progress_message()
+        elif (type(first_data_el) == list or type(first_data_el) == tuple) and len(first_data_el) == 2:
+            for question, answer in vocab_data:
+                if ner_enabled:
+                    get_entity_from(itertools.chain(NLP(question).ents, NLP(answer).ents))
+                get_token_freq_from(itertools.chain(nltk.word_tokenize(question), nltk.word_tokenize(answer)))
+                progress_message()
+        else:
+            raise IOError(f"Vocab data: '{vocab_data}' is not supported.")
+
+        special_tokens = ["<PADD>", "<START>", "<UNK>"] + list(ner_label_tokens)
         vocab = sorted(list(word_freq.keys()), key=lambda w: word_freq.get(w, 0), reverse=True)
         vocab = special_tokens + vocab[:vocab_size - len(special_tokens)]
-
         np.random.shuffle(vocab)  # Shuffle for validation check of cached files.
 
         if ner_enabled:
