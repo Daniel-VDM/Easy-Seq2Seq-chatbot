@@ -67,135 +67,37 @@ class ChatBot:
 
         if os.path.isfile("cache/vocab.pickle") and not ignore_cache:
             try:
-                data_vocab_dicts = pickle.load(open("cache/vocab.pickle", 'rb'))
-                if len(data_vocab_dicts["word_to_id"]) != len(data_vocab_dicts["word_to_id"]):
+                self.vocab_data_dict = pickle.load(open("cache/vocab.pickle", 'rb'))
+                if len(self.vocab_data_dict["word_to_id"]) != len(self.vocab_data_dict["word_to_id"]):
                     raise ValueError("'cache/vocab.pickle' dictionary lengths do not match.")
-                if len(data_vocab_dicts["word_to_id"]) != vocab_size:
-                    raise ValueError("'cache/vocab.pickle' vocab size is not {}.".format(vocab_size))
-                if self.ner_enabled and ("NER_tokens" not in data_vocab_dicts.keys()
-                                         or "NER_label_to_token_dict" not in data_vocab_dicts.keys()):
+                if len(self.vocab_data_dict["word_to_id"]) != vocab_size:
+                    raise ValueError(f"'cache/vocab.pickle' vocab size is not {vocab_size}.")
+                if self.ner_enabled and ("NER_tokens" not in self.vocab_data_dict.keys()
+                                         or "NER_label_to_token_dict" not in self.vocab_data_dict.keys()):
                     raise ValueError("'cache/vocab.pickle' does not contain NER data.")
                 print("[!] Using cached vocab.")
             except Exception as e:
                 print("Exception encountered when reading vocab data: {}".format(e))
-                data_vocab_dicts = self._create_and_cache_vocab(vocab_file, vocab_size, ner_enabled)
+                self.vocab_data_dict = self._create_and_cache_vocab()
         else:
             print("No cached vocab file found.")
-            data_vocab_dicts = self._create_and_cache_vocab(vocab_file, vocab_size, ner_enabled)
-
-        self.word_to_id_dict = data_vocab_dicts["word_to_id"]
-        self.id_to_word_dict = data_vocab_dicts["id_to_word"]
+            self.vocab_data_dict = self._create_and_cache_vocab()
+        self.word_to_id_dict = self.vocab_data_dict["word_to_id"]
+        self.id_to_word_dict = self.vocab_data_dict["id_to_word"]
 
         if self.ner_enabled:
-            self.ner_tokens = data_vocab_dicts["NER_tokens"]
-            self.ner_label_to_token_dict = data_vocab_dicts["NER_label_to_token_dict"]
+            self.ner_tokens = self.vocab_data_dict["NER_tokens"]
+            self.ner_label_to_token_dict = self.vocab_data_dict["NER_label_to_token_dict"]
 
         self._encoded_x1, self._encoded_x2, self._encoded_y = None, None, None
-        self._train_QA_pairs = []
+        self._trained_QA_pairs = []
 
     def __str__(self):
-        return f"ChatBot Object: N_in={self.n_in}, N_out={self.n_out}, Vocab Size={self.vocab_size},\
+        return f"ChatBot Object: Vocab Size={self.vocab_size}, N_in={self.n_in}, N_out={self.n_out},\
                  Vocab File={self.vocab_file}, NER={self.ner_enabled}, Training Data={self.last_trained_file}."
 
     def __bool__(self):
         return self.encoder is not None and self.decoder is not None
-
-    @staticmethod
-    def _create_and_cache_vocab(vocab_file, vocab_size, ner_enabled=True):
-        """
-        Private Static Method.
-
-        # TODO: docs for this function.
-
-        Creates and pickles a vocab from VOCAB_FILE. Note that VOCAB_FILE
-        is expected to come as a json file where said file has a list of
-        question-answer pairs saved as 'vocab_data':
-            For example:
-                [...,["Did you change your hair?", "No."], ["Hi!", "Hello."],...]
-        Note that said json file needs to be in the same dir as this script.
-
-        Vocab uses most frequent words first when truncating the vocab to
-        fit the vocab size.
-
-        Note that the cached vocab also saves a set of NER tokens (from the given
-        vocab file) for future references.
-
-        This function is very expensive due to the NER tagging.
-
-        TO SELF: This should be improved in the future to incorperate a better NER tagger
-        that takes advantage for the Cornell DB structure. I.E NLP the whole movie and
-        tag from there... CAN BE DONE WITH DIFFERENT JASON FORMAT.
-
-        :param vocab_file: file name of the jason file containing vocab data.
-        :param vocab_size: the fixed size of the vocab.
-        :param ner_enabled: toggles NER encoding for vocab.
-        """
-        word_freq, count = {}, 0
-        vocab_data = json.load(open(vocab_file))["vocab_data"]
-        ner_label_tokens = set()
-        ner_tokens = set()
-        ner_label_to_token_dict = {}
-
-        def get_entity_from(nlp_ents):
-            for entity in nlp_ents:
-                ner_label_tokens.add(f"<{entity.label_}>")
-                for wrd in nltk.word_tokenize(entity.text):
-                    ner_tokens.add(wrd)
-                    if f"<{entity.label_}>" in ner_label_to_token_dict:
-                        ner_label_to_token_dict[f"<{entity.label_}>"].add(wrd)
-                    else:
-                        ner_label_to_token_dict[f"<{entity.label_}>"] = {wrd}
-
-        def get_token_freq_from(tokens):
-            for tok in tokens:
-                if bool(re.search('[a-zA-Z]', tok)) and tok not in ner_tokens:
-                    tok = tok.lower()
-                    if tok in word_freq:
-                        word_freq[tok] += 1
-                    else:
-                        word_freq[tok] = 1
-
-        def progress_message():
-            nonlocal count
-            count += 1
-            sys.stdout.write(f"\rCreating Vocab, parsed {i}/{len(vocab_data)} lines of vocab data.")
-            sys.stdout.flush()
-
-        try:
-            first_data_el = vocab_data[0]
-        except ValueError:
-            first_data_el = None
-
-        if type(first_data_el) == str:
-            for line in vocab_data:
-                if ner_enabled:
-                    get_entity_from(NLP(line).ents)
-                get_token_freq_from(nltk.word_tokenize(line))
-                progress_message()
-        elif (type(first_data_el) == list or type(first_data_el) == tuple) and len(first_data_el) == 2:
-            for question, answer in vocab_data:
-                if ner_enabled:
-                    get_entity_from(itertools.chain(NLP(question).ents, NLP(answer).ents))
-                get_token_freq_from(itertools.chain(nltk.word_tokenize(question), nltk.word_tokenize(answer)))
-                progress_message()
-        else:
-            raise IOError(f"Vocab data: '{vocab_data}' is not supported.")
-
-        special_tokens = ["<PADD>", "<START>", "<UNK>"] + list(ner_label_tokens)
-        vocab = sorted(list(word_freq.keys()), key=lambda w: word_freq.get(w, 0), reverse=True)
-        vocab = special_tokens + vocab[:vocab_size - len(special_tokens)]
-        np.random.shuffle(vocab)  # Shuffle for validation check of cached files.
-
-        if ner_enabled:
-            dump = {"word_to_id": {c: i for i, c in enumerate(vocab)},
-                    "id_to_word": {i: c for i, c in enumerate(vocab)},
-                    "NER_tokens": ner_tokens, "NER_label_to_token_dict": ner_label_to_token_dict}
-        else:
-            dump = {"word_to_id": {c: i for i, c in enumerate(vocab)},
-                    "id_to_word": {i: c for i, c in enumerate(vocab)}}
-        pickle.dump(dump, open("cache/vocab.pickle", 'wb'))
-        print(f"\nCached vocab file. Vocab size = {vocab_size}, Vocab Data = {vocab_file}")
-        return dump
 
     @staticmethod
     def _list_one_hot_encode(iterable, vocab_len):
@@ -232,7 +134,7 @@ class ChatBot:
         """
         Private method for train method.
 
-        TODO: DOCS
+        TODO: Refactor this so that we do it determanisticly.
         """
         X_1t, X_2t, Y_t = [X_1[1]], [X_2[1]], [Y[1]]
         X_1v, X_2v, Y_v = [X_1[0]], [X_2[0]], [Y[0]]
@@ -248,6 +150,101 @@ class ChatBot:
         X_1t, X_2t, Y_t = np.array(X_1t), np.array(X_2t), np.array(Y_t)
         X_1v, X_2v, Y_v = np.array(X_1v), np.array(X_2v), np.array(Y_v)
         return X_1t, X_2t, Y_t, X_1v, X_2v, Y_v
+
+    def _create_and_cache_vocab(self):
+        """
+        Private Static Method.
+
+        # TODO: docs for this function.
+        # TODO: refactor this to make it an instance method.
+
+        Creates and pickles a vocab from VOCAB_FILE. Note that VOCAB_FILE
+        is expected to come as a json file where said file has a list of
+        question-answer pairs saved on row: 'vocab_data':
+            An example of said pairs:
+                [...,["Did you change your hair?", "No."], ["Hi!", "Hello."],...]
+        Note that said json file needs to be in the same dir as this script.
+
+        Vocab uses most frequent words first when truncating the vocab to
+        fit the vocab size.
+
+        Note that the cached vocab also saves a set of NER tokens (from the given
+        vocab file) for future references.
+
+        This function is very expensive due to the NER tagging.
+
+        TO SELF: This should be improved in the future to incorperate a better NER tagger
+        that takes advantage for the Cornell DB structure. I.E NLP the whole movie and
+        tag from there... CAN BE DONE WITH DIFFERENT JASON FORMAT.
+        """
+        count = 0
+        word_freq = {}
+        ner_tokens = set()
+        ner_label_tokens = set()
+        ner_label_to_token_dict = {}
+        vocab_data = json.load(open(self.vocab_file))["vocab_data"]
+
+        def process_for_entities(nlp_entities):
+            for entity in nlp_entities:
+                ner_label_tokens.add(f"<{entity.label_}>")
+                for wrd in nltk.word_tokenize(entity.text):
+                    ner_tokens.add(wrd)
+                    if f"<{entity.label_}>" in ner_label_to_token_dict:
+                        ner_label_to_token_dict[f"<{entity.label_}>"].add(wrd)
+                    else:
+                        ner_label_to_token_dict[f"<{entity.label_}>"] = {wrd}
+
+        def process_for_freq(tokens):
+            for tok in tokens:
+                if bool(re.search('[a-zA-Z]', tok)) and tok not in ner_tokens:
+                    tok = tok.lower()
+                    if tok in word_freq:
+                        word_freq[tok] += 1
+                    else:
+                        word_freq[tok] = 1
+
+        def progress_message():
+            nonlocal count
+            count += 1
+            sys.stdout.write(f"\rCreating Vocab, parsed {i}/{len(vocab_data)} lines of vocab data.")
+            sys.stdout.flush()
+
+        try:
+            first_vocab_el = vocab_data[0]
+        except IndexError:
+            first_vocab_el = None
+
+        if type(first_vocab_el) == str:
+            for line in vocab_data:
+                if self.ner_enabled:
+                    process_for_entities(NLP(line).ents)
+                process_for_freq(nltk.word_tokenize(line))
+                progress_message()
+        elif (type(first_vocab_el) == list or type(first_vocab_el) == tuple) and len(first_vocab_el) == 2:
+            for question, answer in vocab_data:
+                if self.ner_enabled:
+                    process_for_entities(itertools.chain(NLP(question).ents, NLP(answer).ents))
+                process_for_freq(itertools.chain(nltk.word_tokenize(question), nltk.word_tokenize(answer)))
+                progress_message()
+        else:
+            raise IOError(f"Vocab data: '{vocab_data}' is not supported.")
+
+        special_tokens = ["<PADD>", "<START>", "<UNK>"] + list(ner_label_tokens)
+        vocab = sorted(list(word_freq.keys()), key=lambda w: word_freq.get(w, 0), reverse=True)
+        vocab = special_tokens + vocab[:self.vocab_size - len(special_tokens)]
+        np.random.shuffle(vocab)  # Shuffle for validation check of cached files.
+
+        if self.ner_enabled:
+            dump = {"word_to_id": {c: i for i, c in enumerate(vocab)},
+                    "id_to_word": {i: c for i, c in enumerate(vocab)},
+                    "NER_tokens": ner_tokens, "NER_label_to_token_dict": ner_label_to_token_dict}
+        else:
+            dump = {"word_to_id": {c: i for i, c in enumerate(vocab)},
+                    "id_to_word": {i: c for i, c in enumerate(vocab)}}
+        pickle.dump(dump, open("cache/vocab.pickle", 'wb'))
+        print(f"\nCached vocab file. Vocab size = {self.vocab_size}, Vocab Data = {self.vocab_file}")
+        self.vocab_data_dict = dump
+        return dump
 
     def vectorize(self, sentence, length=None):
         """
@@ -280,43 +277,62 @@ class ChatBot:
             vector[i] = word_id
         return vector
 
-    def has_valid_encodings(self):
+    def batch_generator(self, batch_size=32):
         """
-        Check if the current instance has encodings that uses the instance's vocab.
+        A generator that generates a list (length = BATCH_SIZE) of one-hot encoded
+        vectors of the training data at each yield.
+
+        Each batch is created from a randomized selection of un-yielded training data.
+
+        IMPORTANT:
+        This generator relies on the private method '_create_and_cache_encoding' being
+        called once before this generator's call as it requires the encodings that
+        said method creates.
+
+        :param batch_size: The size of the batch used in training.
+        :return: The number question-answer pairs encoded.
         """
-        if self._encoded_x1 is None or self._encoded_x2 is None \
-                or self._encoded_y is None or self._train_QA_pairs == []:
-            return False
-        if len(self._encoded_x1) != len(self._encoded_x2) != len(self._encoded_y):
-            return False
+        if not self._encoded_x1 or not self._encoded_x2 or not self._encoded_y:
+            raise RuntimeError("Attempted to generate one-hot encodings without encoded training data.")
 
-        arr = np.random.choice(len(self._encoded_x1), size=min(25, len(self._encoded_x1)), replace=False)
-        for i in arr:
-            question_str, answer_str = self._train_QA_pairs[i]
+        lst = list(range(len(self._encoded_y)))
+        np.random.shuffle(lst)
+        queue = deque(lst)
+        batch_num = 0
+        total_batch_count = int(np.ceil(len(lst)/batch_size))
 
-            q_vec_ref = self.vectorize(question_str, self.n_in)
-            a_vec_ref = self.vectorize(answer_str, self.n_out)
-            a_shift_vec_ref = np.roll(a_vec_ref, 1)
-            a_shift_vec_ref[0] = self.word_to_id_dict["<START>"]
+        while queue:
+            this_batch_size = min(batch_size, len(queue))
+            X_1_encoded = np.empty(this_batch_size, dtype=bytearray)
+            X_2_encoded = np.empty(this_batch_size, dtype=bytearray)
+            Y_encoded = np.empty(this_batch_size, dtype=bytearray)
 
-            q_vec = self._encoded_x1[i]
-            a_vec = self._encoded_y[i]
-            a_shift_vec = self._encoded_x2[i]
+            if this_batch_size == 1:
+                index = queue.popleft()
+                queue.extend([index, index])
+                this_batch_size = 2
 
-            if not np.array_equal(q_vec, q_vec_ref) or not np.array_equal(a_vec, a_vec_ref)\
-                    or not np.array_equal(a_shift_vec, a_shift_vec_ref):
-                return False
-        return True
+            for i in range(this_batch_size):
+                encoded_index = queue.pop()
+                X_1_encoded[i] = self._encoded_x1[encoded_index]
+                X_2_encoded[i] = self._encoded_x2[encoded_index]
+                Y_encoded[i] = self._encoded_y[encoded_index]
 
-    def _create_and_save_encoding(self, training_data_pairs, verbose=0):
+            X_1 = self._array_one_hot_encode(X_1_encoded, self.n_in, len(self.word_to_id_dict))
+            X_2 = self._array_one_hot_encode(X_2_encoded, self.n_out, len(self.word_to_id_dict))
+            Y = self._array_one_hot_encode(Y_encoded, self.n_out, len(self.word_to_id_dict))
+
+            batch_num += 1
+            yield X_1, X_2, Y, f"{batch_num}/{total_batch_count}"
+
+    def _create_and_cache_encoding(self, training_data_pairs, verbose=0):
         """
         Private method for the 'train' & 'batch_generator' methods of this class.
 
-        This method creates and saves an 'encoded' version of the training data
-        (from DATA_FILE) so that the generator does not have to do this work
-        every time it is called.
+        This method creates and cache an 'encoded' training data (from DATA_FILE)
+        for the training generator.
 
-        Said list of encodings are saved as private instance attrs.
+        The encodings are stored as private instance attrs.
 
         The 'encoding' is as follows:
             Given a sentence, we create an array/vector of size N_in or N_out
@@ -337,7 +353,7 @@ class ChatBot:
             return len(q_toks) <= self.n_in and len(a_toks) <= self.n_out
 
         encoded_x1, encoded_x2, encoded_y = [], [], []
-        train_QA_pairs = []
+        trained_QA_pairs = []
 
         print("-==Encoding Training Data==-")
         for i, (q, a) in enumerate(training_data_pairs):
@@ -347,7 +363,7 @@ class ChatBot:
                 a_shift_vec = np.roll(a_vec, 1)
                 a_shift_vec[0] = self.word_to_id_dict["<START>"]
 
-                train_QA_pairs.append((q, a))
+                trained_QA_pairs.append((q, a))
                 encoded_x1.append(q_vec)
                 encoded_y.append(a_vec)
                 encoded_x2.append(a_shift_vec)
@@ -357,67 +373,50 @@ class ChatBot:
         print("")
 
         self._encoded_x1, self._encoded_x2, self._encoded_y = encoded_x1, encoded_x2, encoded_y
-        self._train_QA_pairs = train_QA_pairs
+        self._trained_QA_pairs = trained_QA_pairs
 
         pickle.dump(encoded_x1, open("cache/x1.pickle", 'wb'))
         pickle.dump(encoded_x2, open("cache/x2.pickle", 'wb'))
         pickle.dump(encoded_y, open("cache/y.pickle", 'wb'))
-        pickle.dump(train_QA_pairs, open("cache/train_QA_pairs.pickle", 'wb'))
+        pickle.dump(trained_QA_pairs, open("cache/trained_QA_pairs.pickle", 'wb'))
 
         print("Cached encoded training data.")
         return True
 
-    def batch_generator(self, batch_size=32):
+    def has_valid_encodings(self):
         """
-        A generator that generates a list (length = BATCH_SIZE) of one-hot encoded
-        vectors of the training data at each yield.
-
-        Each batch is a randomized selection of un-yielded training data.
-
-        IMPORTANT:
-        This generator relies on the private method '_create_and_save_encoding' being
-        called once before this generator's call as it requires the encodings that
-        said method creates.
-
-        # TODO: handle the case where we have a batch of size 1.
-
-        :param batch_size: The size of the batch used in training.
-        :return: The number question-answer pairs encoded.
+        Check if the current instance has encodings that uses the instance's vocab.
         """
-        if not self._encoded_x1 or not self._encoded_x2 or not self._encoded_y:
-            raise RuntimeError("Attempted to generate one-hot encodings without encoded training data.")
+        if self._encoded_x1 is None or self._encoded_x2 is None \
+                or self._encoded_y is None or not self._trained_QA_pairs:
+            return False
+        if len(self._encoded_x1) != len(self._encoded_x2) != len(self._encoded_y):
+            return False
 
-        lst = list(range(len(self._encoded_y)))
-        np.random.shuffle(lst)
-        queue = deque(lst)
-        batch_num = 0
-        total_batch_count = int(np.ceil(len(lst)/batch_size))
+        arr = np.random.choice(len(self._encoded_x1), size=min(25, len(self._encoded_x1)), replace=False)
+        for i in arr:
+            question_str, answer_str = self._trained_QA_pairs[i]
 
-        while queue:
-            this_batch_size = min(batch_size, len(queue))
-            X_1_encoded = np.empty(this_batch_size, dtype=bytearray)
-            X_2_encoded = np.empty(this_batch_size, dtype=bytearray)
-            Y_encoded = np.empty(this_batch_size, dtype=bytearray)
+            q_vec_ref = self.vectorize(question_str, self.n_in)
+            a_vec_ref = self.vectorize(answer_str, self.n_out)
+            a_shift_vec_ref = np.roll(a_vec_ref, 1)
+            a_shift_vec_ref[0] = self.word_to_id_dict["<START>"]
 
-            for i in range(this_batch_size):
-                encoded_index = queue.pop()
-                X_1_encoded[i] = self._encoded_x1[encoded_index]
-                X_2_encoded[i] = self._encoded_x2[encoded_index]
-                Y_encoded[i] = self._encoded_y[encoded_index]
+            q_vec = self._encoded_x1[i]
+            a_vec = self._encoded_y[i]
+            a_shift_vec = self._encoded_x2[i]
 
-            X_1 = self._array_one_hot_encode(X_1_encoded, self.n_in, len(self.word_to_id_dict))
-            X_2 = self._array_one_hot_encode(X_2_encoded, self.n_out, len(self.word_to_id_dict))
-            Y = self._array_one_hot_encode(Y_encoded, self.n_out, len(self.word_to_id_dict))
-
-            batch_num += 1
-            yield X_1, X_2, Y, f"{batch_num}/{total_batch_count}"
+            if not np.array_equal(q_vec, q_vec_ref) or not np.array_equal(a_vec, a_vec_ref) \
+                    or not np.array_equal(a_shift_vec, a_shift_vec_ref):
+                return False
+        return True
 
     def train(self, data_file, epoch, batch_size=32, split_percentage=0.35, force_encode=False, verbose=0):
         """
         Trains the chatbot's encoder and decoder LSTMs (= the Seq2Seq model).
 
         Note that DATA_FILE is expected to come as a json file where said
-        file is has a list of question-answer pairs saved as 'question_answer_pairs'.
+        file is has a list of question-answer pairs saved on row: 'question_answer_pairs'.
             Said list has the following form:
                 [...,["Did you change your hair?", "No."], ["Hi!", "Hello."],...]
         Note that said file needs to be in the same dir as this script.
@@ -439,18 +438,18 @@ class ChatBot:
             print(model.summary())
 
         if not force_encode and not self.ignore_cache and os.path.isfile("cache/x1.pickle") \
-                and os.path.isfile("cache/x2.pickle") and os.path.isfile("cache/y.pickle")\
-                and os.path.isfile("cache/train_QA_pairs.pickle"):
+                and os.path.isfile("cache/x2.pickle") and os.path.isfile("cache/y.pickle") \
+                and os.path.isfile("cache/trained_QA_pairs.pickle"):
             self._encoded_x1 = pickle.load(open("cache/x1.pickle", 'rb'))
             self._encoded_x2 = pickle.load(open("cache/x2.pickle", 'rb'))
             self._encoded_y = pickle.load(open("cache/y.pickle", 'rb'))
-            self._train_QA_pairs = pickle.load(open("cache/train_QA_pairs.pickle", 'rb'))
+            self._trained_QA_pairs = pickle.load(open("cache/trained_QA_pairs.pickle", 'rb'))
 
         if self.has_valid_encodings():
             print("[!] Using cached training data encodings.")
         else:
             training_data_pairs = json.load(open(data_file))["question_answer_pairs"]
-            self._create_and_save_encoding(training_data_pairs=training_data_pairs, verbose=verbose)
+            self._create_and_cache_encoding(training_data_pairs=training_data_pairs, verbose=verbose)
 
         print(f"Size of encoded training data: {len(self._encoded_x1)}")
         print(f"-==Training on {len(self._encoded_y)} Question-Answer pairs==-")
@@ -461,7 +460,7 @@ class ChatBot:
                 if verbose:
                     sys.stdout.flush()
                     sys.stdout.write('\x1b[2K')
-                    print("\rEpoch: {}/{}, Batch: {}. \tTraining...".format(ep, epoch, batch_counter))
+                    print(f"\rEpoch: {ep}/{epoch}, Batch: {batch_counter}. \tTraining...")
 
                 X_1t, X_2t, Y_t, X_1v, X_2v, Y_v = self._create_validation_split(X_1, X_2, Y, split_percentage)
                 model.fit([X_1t, X_2t], Y_t, epochs=1, batch_size=batch_size,
@@ -559,8 +558,8 @@ def get_options():
     return opts.parse_args()[0]
 
 
-def get_saved_model_dir():
-    saved_models = os.listdir("saved_models")
+def get_saved_model(directory):
+    saved_models = os.listdir(directory)
     if len(saved_models) == 0:
         print("There are no saved models.")
         return None
@@ -594,7 +593,7 @@ if __name__ == "__main__":
     sys.stdout.flush()
     user_input = input()
 
-    saved_model_dir = get_saved_model_dir() if user_input[0].lower() == 'y' else None
+    saved_model_dir = get_saved_model(opts.saved_models_dir) if user_input[0].lower() == 'y' else None
 
     if saved_model_dir is not None:
         chat_bot = pickle.load(open(f"{opts.saved_models_dir}/{saved_model_dir}/chatbot.pickle", 'rb'))
