@@ -72,12 +72,14 @@ class ChatBot:
                     raise ValueError("'cache/vocab.pickle' dictionary lengths do not match.")
                 if len(self.vocab_data_dict["word_to_id"]) != vocab_size:
                     raise ValueError(f"'cache/vocab.pickle' vocab size is not {vocab_size}.")
+                if self.vocab_file != self.vocab_data_dict["source_file"]:
+                    raise ValueError("{self.vocab_file} is not the source file of 'cache/vocab.pickle'.")
                 if self.ner_enabled and ("NER_tokens" not in self.vocab_data_dict.keys()
                                          or "NER_label_to_token_dict" not in self.vocab_data_dict.keys()):
                     raise ValueError("'cache/vocab.pickle' does not contain NER data.")
                 print("[!] Using cached vocab.")
             except Exception as e:
-                print("Exception encountered when reading vocab data: {}".format(e))
+                print(f"Exception encountered when reading vocab data: {e}")
                 self.vocab_data_dict = self._create_and_cache_vocab()
         else:
             print("No cached vocab file found.")
@@ -206,7 +208,7 @@ class ChatBot:
         def progress_message():
             nonlocal count
             count += 1
-            sys.stdout.write(f"\rCreating Vocab, parsed {i}/{len(vocab_data)} lines of vocab data.")
+            sys.stdout.write(f"\rCreating Vocab, parsed {count}/{len(vocab_data)} lines of vocab data.")
             sys.stdout.flush()
 
         try:
@@ -235,11 +237,13 @@ class ChatBot:
         np.random.shuffle(vocab)  # Shuffle for validation check of cached files.
 
         if self.ner_enabled:
-            dump = {"word_to_id": {c: i for i, c in enumerate(vocab)},
+            dump = {"source_file": self.vocab_file,
+                    "word_to_id": {c: i for i, c in enumerate(vocab)},
                     "id_to_word": {i: c for i, c in enumerate(vocab)},
                     "NER_tokens": ner_tokens, "NER_label_to_token_dict": ner_label_to_token_dict}
         else:
-            dump = {"word_to_id": {c: i for i, c in enumerate(vocab)},
+            dump = {"source_file": self.vocab_file,
+                    "word_to_id": {c: i for i, c in enumerate(vocab)},
                     "id_to_word": {i: c for i, c in enumerate(vocab)}}
         pickle.dump(dump, open("cache/vocab.pickle", 'wb'))
         print(f"\nCached vocab file. Vocab size = {self.vocab_size}, Vocab Data = {self.vocab_file}")
@@ -375,10 +379,11 @@ class ChatBot:
         self._encoded_x1, self._encoded_x2, self._encoded_y = encoded_x1, encoded_x2, encoded_y
         self._trained_QA_pairs = trained_QA_pairs
 
-        pickle.dump(encoded_x1, open("cache/x1.pickle", 'wb'))
-        pickle.dump(encoded_x2, open("cache/x2.pickle", 'wb'))
-        pickle.dump(encoded_y, open("cache/y.pickle", 'wb'))
-        pickle.dump(trained_QA_pairs, open("cache/trained_QA_pairs.pickle", 'wb'))
+        pickle.dump({"source_file": self.last_trained_file, "data": encoded_x1}, open("cache/x1.pickle", 'wb'))
+        pickle.dump({"source_file": self.last_trained_file, "data": encoded_x2}, open("cache/x2.pickle", 'wb'))
+        pickle.dump({"source_file": self.last_trained_file, "data": encoded_y}, open("cache/y.pickle", 'wb'))
+        pickle.dump({"source_file": self.last_trained_file, "data": trained_QA_pairs},
+                    open("cache/trained_QA_pairs.pickle", 'wb'))
 
         print("Cached encoded training data.")
         return True
@@ -411,7 +416,35 @@ class ChatBot:
                 return False
         return True
 
-    def train(self, data_file, epoch, batch_size=32, split_percentage=0.35, force_encode=False, verbose=0):
+    def _load_encoded_training_data_cache(self):
+        """
+        Private method to load the encoded training data from cache.
+        Does not load if the source file of the cache doesnt match the training
+        data file of this object (or is not present).
+        """
+        if not self.ignore_cache and os.path.isfile("cache/x1.pickle") \
+                and os.path.isfile("cache/x2.pickle") and os.path.isfile("cache/y.pickle") \
+                and os.path.isfile("cache/trained_QA_pairs.pickle"):
+            x1_file_dict = pickle.load(open("cache/x1.pickle", 'rb'))
+            x2_file_dict = pickle.load(open("cache/x2.pickle", 'rb'))
+            y_file_dict = pickle.load(open("cache/y.pickle", 'rb'))
+            QA_file_dict = pickle.load(open("cache/trained_QA_pairs.pickle", 'rb'))
+
+            try:
+                if self.last_trained_file == x1_file_dict['source_file'] == x2_file_dict['source_file'] \
+                        == y_file_dict['source_file'] == QA_file_dict['source_file']:
+
+                    self._encoded_x1 = x1_file_dict['data']
+                    self._encoded_x2 = x2_file_dict['data']
+                    self._encoded_y = y_file_dict['data']
+                    self._trained_QA_pairs = QA_file_dict['data']
+                    return True
+            except (AttributeError, TypeError, KeyError):
+                # Handle exceptions for data types and key errors.
+                pass
+        return False
+
+    def train(self, data_file, epoch, batch_size=32, split_percentage=0.35, is_force_encode=False, verbose=0):
         """
         Trains the chatbot's encoder and decoder LSTMs (= the Seq2Seq model).
 
@@ -426,24 +459,14 @@ class ChatBot:
         :param batch_size: size of the batch in training.
         :param split_percentage: a float between 0 and 1. It is the percentage of
                                  training data held out for validation.
-        :param force_encode: Forces the script to re-encode the training data, even
+        :param is_force_encode: Forces the script to re-encode the training data, even
                              if there is a cached copy.
         :param verbose: update messages during training.
         """
         self.last_trained_file = data_file
 
-        model, encoder, decoder = define_models(len(self.word_to_id_dict), len(self.id_to_word_dict), 128)
-        model.compile(optimizer='adam', loss='categorical_crossentropy')
-        if verbose:
-            print(model.summary())
-
-        if not force_encode and not self.ignore_cache and os.path.isfile("cache/x1.pickle") \
-                and os.path.isfile("cache/x2.pickle") and os.path.isfile("cache/y.pickle") \
-                and os.path.isfile("cache/trained_QA_pairs.pickle"):
-            self._encoded_x1 = pickle.load(open("cache/x1.pickle", 'rb'))
-            self._encoded_x2 = pickle.load(open("cache/x2.pickle", 'rb'))
-            self._encoded_y = pickle.load(open("cache/y.pickle", 'rb'))
-            self._trained_QA_pairs = pickle.load(open("cache/trained_QA_pairs.pickle", 'rb'))
+        if not is_force_encode:
+            self._load_encoded_training_data_cache()
 
         if self.has_valid_encodings():
             print("[!] Using cached training data encodings.")
@@ -453,6 +476,11 @@ class ChatBot:
 
         print(f"Size of encoded training data: {len(self._encoded_x1)}")
         print(f"-==Training on {len(self._encoded_y)} Question-Answer pairs==-")
+
+        model, encoder, decoder = define_models(len(self.word_to_id_dict), len(self.id_to_word_dict), 128)
+        model.compile(optimizer='adam', loss='categorical_crossentropy')
+        if verbose:
+            print(model.summary())
 
         for ep in range(epoch):
             batch_gen = self.batch_generator(batch_size=batch_size)
@@ -619,13 +647,16 @@ if __name__ == "__main__":
             new_model_path = f"{opts.saved_models_dir}/{new_model_name}"
             if not os.path.exists(new_model_path):
                 os.mkdir(new_model_path)
+            else:
+                shutil.rmtree(new_model_path)
+                os.mkdir(new_model_path)
             pickle.dump(chat_bot, open(f"{new_model_path}/chatbot.pickle", 'wb'))
             if not os.path.exists(f"{new_model_path}/backup"):
                 os.mkdir(f"{new_model_path}/backup")
             chat_bot.encoder.save_weights(f"{new_model_path}/backup/encoder.h5")
             chat_bot.decoder.save_weights(f"{new_model_path}/backup/decoder.h5")
-            shutil.copytree("cache", f"{new_model_path}/backup")
-            shutil.copyfile(opts.data_file, f"{new_model_path}/backup/[TRAIN_DATA]{opts.data_file}")
-            shutil.copyfile(opts.vocab_file, f"{new_model_path}/backup/[VOCAB_DATA]{opts.vocab_file}")
+            shutil.copytree("cache", f"{new_model_path}/backup/cache")
+            shutil.copyfile(opts.data_file, f"{new_model_path}/backup/[T-DAT]{opts.data_file}")
+            shutil.copyfile(opts.vocab_file, f"{new_model_path}/backup/[V-DAT]{opts.vocab_file}")
             print(f"\nSaved the trained model to: '{new_model_path}'.")
     chat_bot.chat()
