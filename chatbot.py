@@ -64,6 +64,7 @@ class ChatBot:
         self.vocab_size = vocab_size
         self.encoder, self.decoder = None, None
         self.last_trained_file = None
+        self.train_data_filter_mode = 0
 
         if os.path.isfile("cache/vocab.pickle") and not ignore_cache:
             try:
@@ -72,14 +73,14 @@ class ChatBot:
                     raise ValueError("'cache/vocab.pickle' dictionary lengths do not match.")
                 if len(self.vocab_data_dict["word_to_id"]) != vocab_size:
                     raise ValueError(f"'cache/vocab.pickle' vocab size is not {vocab_size}.")
-                if self.vocab_file != self.vocab_data_dict["source_file"]:
+                if self.vocab_file != self.vocab_data_dict["source"]:
                     raise ValueError("{self.vocab_file} is not the source file of 'cache/vocab.pickle'.")
                 if self.ner_enabled and ("NER_tokens" not in self.vocab_data_dict.keys()
                                          or "NER_label_to_token_dict" not in self.vocab_data_dict.keys()):
                     raise ValueError("'cache/vocab.pickle' does not contain NER data.")
                 print("[!] Using cached vocab.")
             except Exception as e:
-                print(f"Exception encountered when reading vocab data: {e}")
+                print(f"Exception encountered when reading vocab data: {type(e).__name__}, {e}")
                 self.vocab_data_dict = self._create_and_cache_vocab()
         else:
             print("No cached vocab file found.")
@@ -237,12 +238,12 @@ class ChatBot:
         np.random.shuffle(vocab)  # Shuffle for validation check of cached files.
 
         if self.ner_enabled:
-            dump = {"source_file": self.vocab_file,
+            dump = {"source": self.vocab_file,
                     "word_to_id": {c: i for i, c in enumerate(vocab)},
                     "id_to_word": {i: c for i, c in enumerate(vocab)},
                     "NER_tokens": ner_tokens, "NER_label_to_token_dict": ner_label_to_token_dict}
         else:
-            dump = {"source_file": self.vocab_file,
+            dump = {"source": self.vocab_file,
                     "word_to_id": {c: i for i, c in enumerate(vocab)},
                     "id_to_word": {i: c for i, c in enumerate(vocab)}}
         pickle.dump(dump, open("cache/vocab.pickle", 'wb'))
@@ -329,65 +330,6 @@ class ChatBot:
             batch_num += 1
             yield X_1, X_2, Y, f"{batch_num}/{total_batch_count}"
 
-    def _create_and_cache_encoding(self, training_data_pairs, verbose=0):
-        """
-        Private method for the 'train' & 'batch_generator' methods of this class.
-
-        This method creates and cache an 'encoded' training data (from DATA_FILE)
-        for the training generator.
-
-        The encodings are stored as private instance attrs.
-
-        The 'encoding' is as follows:
-            Given a sentence, we create an array/vector of size N_in or N_out
-            (depending on which data we are encoding) where element i of
-            said vector is token i's word ID in the word_to_id_dict dictionary
-            of this object.
-
-        Note each question in the training data gets its own vector & file and
-        each answer gets 2 vectors & files (one of them is shifted by 1 time step).
-
-        :param training_data_pairs: A list of question answer pairs as training data.
-        :param verbose: update messages during execution.
-        :return: The number question-answer pairs encoded.
-        """
-        def is_valid_data(question, answer):
-            q_toks = [tok for tok in nltk.word_tokenize(question) if bool(re.search('[a-zA-Z]', tok))]
-            a_toks = [tok for tok in nltk.word_tokenize(answer) if bool(re.search('[a-zA-Z]', tok))]
-            return len(q_toks) <= self.n_in and len(a_toks) <= self.n_out
-
-        encoded_x1, encoded_x2, encoded_y = [], [], []
-        trained_QA_pairs = []
-
-        print("-==Encoding Training Data==-")
-        for i, (q, a) in enumerate(training_data_pairs):
-            if is_valid_data(q, a):
-                q_vec = self.vectorize(q, self.n_in)
-                a_vec = self.vectorize(a, self.n_out)
-                a_shift_vec = np.roll(a_vec, 1)
-                a_shift_vec[0] = self.word_to_id_dict["<START>"]
-
-                trained_QA_pairs.append((q, a))
-                encoded_x1.append(q_vec)
-                encoded_y.append(a_vec)
-                encoded_x2.append(a_shift_vec)
-            if verbose:
-                sys.stdout.write(f"\rProcessed {i}/{len(training_data_pairs)} Question-Answer Pairs.")
-                sys.stdout.flush()
-        print("")
-
-        self._encoded_x1, self._encoded_x2, self._encoded_y = encoded_x1, encoded_x2, encoded_y
-        self._trained_QA_pairs = trained_QA_pairs
-
-        pickle.dump({"source_file": self.last_trained_file, "data": encoded_x1}, open("cache/x1.pickle", 'wb'))
-        pickle.dump({"source_file": self.last_trained_file, "data": encoded_x2}, open("cache/x2.pickle", 'wb'))
-        pickle.dump({"source_file": self.last_trained_file, "data": encoded_y}, open("cache/y.pickle", 'wb'))
-        pickle.dump({"source_file": self.last_trained_file, "data": trained_QA_pairs},
-                    open("cache/trained_QA_pairs.pickle", 'wb'))
-
-        print("Cached encoded training data.")
-        return True
-
     def has_valid_encodings(self):
         """
         Check if the current instance has encodings that uses the instance's vocab.
@@ -416,6 +358,82 @@ class ChatBot:
                 return False
         return True
 
+    def _create_and_cache_encoding(self, training_data_pairs, verbose=0):
+        """
+        Private method for the 'train' & 'batch_generator' methods of this class.
+
+        This method creates and cache an 'encoded' training data (from DATA_FILE)
+        for the training generator.
+
+        The encodings are stored as private instance attrs.
+
+        The 'encoding' is as follows:
+            Given a sentence, we create an array/vector of size N_in or N_out
+            (depending on which data we are encoding) where element i of
+            said vector is token i's word ID in the word_to_id_dict dictionary
+            of this object.
+
+        Note each question in the training data gets its own vector & file and
+        each answer gets 2 vectors & files (one of them is shifted by 1 time step).
+
+        :param training_data_pairs: A list of question answer pairs as training data.
+        :param verbose: update messages during execution.
+        :return: The number question-answer pairs encoded.
+        """
+        def is_valid_data(question, answer):
+            q_count, a_count = 0, 0
+            q_has_qmark, a_has_qmark = False, False
+            for tok in nltk.word_tokenize(question):
+                if '?' in tok:
+                    q_has_qmark = True
+                if bool(re.search('[a-zA-Z]', tok)):
+                    q_count += 1
+            for tok in nltk.word_tokenize(answer):
+                if '?' in tok:
+                    a_has_qmark = True
+                if bool(re.search('[a-zA-Z]', tok)):
+                    q_count += 1
+            if self.train_data_filter_mode == 1 and not q_has_qmark:
+                return False
+            if self.train_data_filter_mode == 2 and not(q_has_qmark and a_has_qmark):
+                return False
+            return q_count <= self.n_in and a_count <= self.n_out
+
+        encoded_x1, encoded_x2, encoded_y = [], [], []
+        trained_QA_pairs = []
+
+        print("-==Encoding Training Data==-")
+        for i, (q, a) in enumerate(training_data_pairs):
+            if is_valid_data(q, a):
+                q_vec = self.vectorize(q, self.n_in)
+                a_vec = self.vectorize(a, self.n_out)
+                a_shift_vec = np.roll(a_vec, 1)
+                a_shift_vec[0] = self.word_to_id_dict["<START>"]
+
+                trained_QA_pairs.append((q, a))
+                encoded_x1.append(q_vec)
+                encoded_y.append(a_vec)
+                encoded_x2.append(a_shift_vec)
+            if verbose:
+                sys.stdout.write(f"\rProcessed {i}/{len(training_data_pairs)} Question-Answer Pairs.")
+                sys.stdout.flush()
+        print("")
+
+        self._encoded_x1, self._encoded_x2, self._encoded_y = encoded_x1, encoded_x2, encoded_y
+        self._trained_QA_pairs = trained_QA_pairs
+
+        pickle.dump({"source": self.last_trained_file, "filter": self.train_data_filter_mode,
+                     "data": encoded_x1}, open("cache/x1.pickle", 'wb'))
+        pickle.dump({"source": self.last_trained_file, "filter": self.train_data_filter_mode,
+                     "data": encoded_x2}, open("cache/x2.pickle", 'wb'))
+        pickle.dump({"source": self.last_trained_file, "filter": self.train_data_filter_mode,
+                     "data": encoded_y}, open("cache/y.pickle", 'wb'))
+        pickle.dump({"source": self.last_trained_file, "filter": self.train_data_filter_mode,
+                     "data": trained_QA_pairs}, open("cache/trained_QA_pairs.pickle", 'wb'))
+
+        print("Cached encoded training data.")
+        return True
+
     def _load_encoded_training_data_cache(self):
         """
         Private method to load the encoded training data from cache.
@@ -431,20 +449,22 @@ class ChatBot:
             QA_file_dict = pickle.load(open("cache/trained_QA_pairs.pickle", 'rb'))
 
             try:
-                if self.last_trained_file == x1_file_dict['source_file'] == x2_file_dict['source_file'] \
-                        == y_file_dict['source_file'] == QA_file_dict['source_file']:
-
-                    self._encoded_x1 = x1_file_dict['data']
-                    self._encoded_x2 = x2_file_dict['data']
-                    self._encoded_y = y_file_dict['data']
-                    self._trained_QA_pairs = QA_file_dict['data']
-                    return True
-            except (AttributeError, TypeError, KeyError):
-                # Handle exceptions for data types and key errors.
-                pass
+                if not (self.last_trained_file == x1_file_dict['source'] == x2_file_dict['source']
+                        == x2_file_dict['source'] == y_file_dict['source'] == QA_file_dict['source']):
+                    raise ValueError("Miss matched cached source.")
+                if not (self.train_data_filter_mode == x1_file_dict['filter'] == x2_file_dict['filter']
+                        == x2_file_dict['filter'] == y_file_dict['filter'] == QA_file_dict['filter']):
+                    raise ValueError("Miss matched cached filter.")
+                self._encoded_x1 = x1_file_dict['data']
+                self._encoded_x2 = x2_file_dict['data']
+                self._encoded_y = y_file_dict['data']
+                self._trained_QA_pairs = QA_file_dict['data']
+                return True
+            except (ValueError, AttributeError, TypeError, KeyError) as e:
+                print(f"Exception when loading cached training data: {type(e).__name__}, {e}")
         return False
 
-    def train(self, data_file, epoch, batch_size=32, split_percentage=0.35, is_force_encode=False, verbose=0):
+    def train(self, data_file, filter_mode, epoch, batch_size, split_percentage, is_force_encode, verbose):
         """
         Trains the chatbot's encoder and decoder LSTMs (= the Seq2Seq model).
 
@@ -454,7 +474,14 @@ class ChatBot:
                 [...,["Did you change your hair?", "No."], ["Hi!", "Hello."],...]
         Note that said file needs to be in the same dir as this script.
 
+        Filter Modes:
+            0) Only take Questions that have N_in number of tokens and only take
+            Answers that have N_out number of tokens.
+            1) Mode 0 AND Question must have a '?' token.
+            2) Mode 0 AND Question & Answer must have a '?' token.
+
         :param data_file: The json file containing the question-answer pairs.
+        :param filter_mode: An int that determines the filter mode of the training data.
         :param epoch: number of epochs in training.
         :param batch_size: size of the batch in training.
         :param split_percentage: a float between 0 and 1. It is the percentage of
@@ -464,6 +491,7 @@ class ChatBot:
         :param verbose: update messages during training.
         """
         self.last_trained_file = data_file
+        self.train_data_filter_mode = filter_mode
 
         if not is_force_encode:
             self._load_encoded_training_data_cache()
@@ -573,6 +601,12 @@ def get_options():
                          "This file must be a json file that contains a list of question-answer"
                          "pairs/lists. Reference the included/default file for details."
                          "Default = 'Cornell_Movie_Dialogs_Data.json'")
+    opts.add_option('-c', '--filter_mode', dest='filter_mode', type=int, default=0,
+                    help="An integer that dictates the filter imposed of the data. MODES: {0, 1, 2}. "
+                         "Mode 0: Only take Questions that have N_in number of tokens and only take Answers "
+                         "that have N_out number of tokens. Mode 1: All of Mode 0 AND Questions must have a '?' token. "
+                         "Mode 2: All of Mode 0 AND Question & Answer must have a '?' token. "
+                         "Default = 0")
     opts.add_option('-e', '--epoch', dest='epoch', type=int, default=500,
                     help="The number of epochs for training. Default = 100.")
     opts.add_option('-b', '--batch_size', dest='batch_size', type=int, default=32,
@@ -640,9 +674,10 @@ if __name__ == "__main__":
 
         chat_bot = ChatBot(opts.N_in, opts.N_out, opts.vocab_size, opts.vocab_file,
                            opts.ignore_cached, opts.NER_enabled)
-        chat_bot.train(opts.data_file, opts.epoch, opts.batch_size, opts.split,
+        chat_bot.train(opts.data_file, opts.filter_mode, opts.epoch, opts.batch_size, opts.split,
                        opts.encode_training_data, opts.verbose)
 
+        # TODO: make method to save an obj.
         if new_model_name:
             new_model_path = f"{opts.saved_models_dir}/{new_model_name}"
             if not os.path.exists(new_model_path):

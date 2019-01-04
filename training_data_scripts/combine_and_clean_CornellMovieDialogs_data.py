@@ -61,7 +61,7 @@ if os.path.isfile("dataset.txt"):
         A.append(answer)
 
 dump = {
-    "source_file": file_name,
+    "source": file_name,
     "creation_date": str(datetime.utcnow()) + ' UTC',
     "question_answer_pairs": Q_A_pairs,
     "vocab_data": Q_A_pairs,
