@@ -218,7 +218,7 @@ class ChatBot:
         try:
             first_vocab_el = vocab_data[0]
         except IndexError:
-            first_vocab_el = None
+            raise ValueError(f"{self.vocab_file} contains no data.")
 
         if type(first_vocab_el) == str:
             for line in vocab_data:
@@ -236,9 +236,10 @@ class ChatBot:
             raise IOError(f"Vocab data: '{vocab_data}' is not supported.")
 
         special_tokens = ["<PADD>", "<START>", "<UNK>"] + list(ner_label_tokens)
-        vocab = sorted(list(word_freq.keys()), key=lambda w: word_freq.get(w, 0), reverse=True)
-        vocab = special_tokens + vocab[:self.vocab_size - len(special_tokens)]
+        top_vocab_tok = sorted(list(word_freq.keys()), key=lambda w: word_freq.get(w, 0), reverse=True)
+        vocab = top_vocab_tok[:self.vocab_size - len(special_tokens)]
         np.random.shuffle(vocab)  # Shuffle for validation check of cached files.
+        vocab = special_tokens + vocab
 
         if self.ner_enabled:
             dump = {"signature": self.vocab_file_sig,
@@ -266,10 +267,12 @@ class ChatBot:
         :return: an encoding/vector (using this objects vocab) of the sentence.
         """
         sentence = sentence.strip()
+        # TODO: CHECK LOGIC FOR THESE TOKENS... THEY ARE SPECIAL AND ITS MESSING WITH RANDOMIZE LOGIC...
         unk_token_id = self.word_to_id_dict["<UNK>"]
+        pad_token_id = self.word_to_id_dict["<PADD>"]
         sentence_tokens = list(filter(lambda s: re.search('[a-zA-Z]', s), nltk.word_tokenize(sentence)))
         length = length if length else len(sentence_tokens)
-        vector = np.zeros(length, dtype=int)
+        vector = np.full(length, pad_token_id)
 
         entity = {}
         if self.ner_enabled and any(w for w in sentence_tokens if w in self.ner_tokens):
@@ -383,7 +386,6 @@ class ChatBot:
         :param verbose: update messages during execution.
         :return: The number question-answer pairs encoded.
         """
-        # TODO: test the re.search filter and test train some stuff with filters
         def is_valid_data(question, answer):
             q_count, a_count = 0, 0
             q_has_mark, a_has_mark = False, False
@@ -419,7 +421,7 @@ class ChatBot:
                 encoded_y.append(a_vec)
                 encoded_x2.append(a_shift_vec)
             if verbose:
-                sys.stdout.write(f"\rProcessed {i}/{len(training_data_pairs)} Question-Answer Pairs.")
+                sys.stdout.write(f"\rProcessed {i+1}/{len(training_data_pairs)} Question-Answer Pairs.")
                 sys.stdout.flush()
         print("")
 
