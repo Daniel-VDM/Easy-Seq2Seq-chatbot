@@ -6,8 +6,8 @@ import itertools
 import spacy
 import shutil
 import json
-import re
 import nltk
+import re
 from collections import deque
 from optparse import OptionParser
 from keras.models import Model
@@ -59,10 +59,12 @@ class ChatBot:
 
         self.ner_enabled = ner_enabled
         self.ignore_cache = ignore_cache
+        self.vocab_file_sig = f"{vocab_file} (last_mod: {os.path.getmtime(vocab_file)})"
         self.vocab_file = vocab_file
         self.n_in, self.n_out = n_in, n_out
         self.vocab_size = vocab_size
         self.encoder, self.decoder = None, None
+        self.last_trained_file_sig = None
         self.last_trained_file = None
         self.train_data_filter_mode = 0
 
@@ -73,8 +75,8 @@ class ChatBot:
                     raise ValueError("'cache/vocab.pickle' dictionary lengths do not match.")
                 if len(self.vocab_data_dict["word_to_id"]) != vocab_size:
                     raise ValueError(f"'cache/vocab.pickle' vocab size is not {vocab_size}.")
-                if self.vocab_file != self.vocab_data_dict["source"]:
-                    raise ValueError("{self.vocab_file} is not the source file of 'cache/vocab.pickle'.")
+                if self.vocab_file_sig != self.vocab_data_dict["signature"]:
+                    raise ValueError(f"{self.vocab_file} is not the source file of 'cache/vocab.pickle'.")
                 if self.ner_enabled and ("NER_tokens" not in self.vocab_data_dict.keys()
                                          or "NER_label_to_token_dict" not in self.vocab_data_dict.keys()):
                     raise ValueError("'cache/vocab.pickle' does not contain NER data.")
@@ -96,8 +98,9 @@ class ChatBot:
         self._trained_QA_pairs = []
 
     def __str__(self):
-        return f"ChatBot Object: Vocab Size={self.vocab_size}, N_in={self.n_in}, N_out={self.n_out},\
-                 Vocab File={self.vocab_file}, NER={self.ner_enabled}, Training Data={self.last_trained_file}."
+        return f"ChatBot Object: Vocab Size={self.vocab_size}, N_in={self.n_in}, N_out={self.n_out}," \
+            f" Vocab File={self.vocab_file_sig}, NER={self.ner_enabled}," \
+            f" Training Data={self.last_trained_file_sig}, Filter Mode={self.train_data_filter_mode}"
 
     def __bool__(self):
         return self.encoder is not None and self.decoder is not None
@@ -199,7 +202,7 @@ class ChatBot:
 
         def process_for_freq(tokens):
             for tok in tokens:
-                if bool(re.search('[a-zA-Z]', tok)) and tok not in ner_tokens:
+                if re.search('[a-zA-Z]', tok) and tok not in ner_tokens:
                     tok = tok.lower()
                     if tok in word_freq:
                         word_freq[tok] += 1
@@ -238,16 +241,16 @@ class ChatBot:
         np.random.shuffle(vocab)  # Shuffle for validation check of cached files.
 
         if self.ner_enabled:
-            dump = {"source": self.vocab_file,
+            dump = {"signature": self.vocab_file_sig,
                     "word_to_id": {c: i for i, c in enumerate(vocab)},
                     "id_to_word": {i: c for i, c in enumerate(vocab)},
                     "NER_tokens": ner_tokens, "NER_label_to_token_dict": ner_label_to_token_dict}
         else:
-            dump = {"source": self.vocab_file,
+            dump = {"signature": self.vocab_file_sig,
                     "word_to_id": {c: i for i, c in enumerate(vocab)},
                     "id_to_word": {i: c for i, c in enumerate(vocab)}}
         pickle.dump(dump, open("cache/vocab.pickle", 'wb'))
-        print(f"\nCached vocab file. Vocab size = {self.vocab_size}, Vocab Data = {self.vocab_file}")
+        print(f"\nCached vocab file. Vocab size = {self.vocab_size}, Vocab Data = {self.vocab_file_sig}")
         self.vocab_data_dict = dump
         return dump
 
@@ -264,7 +267,7 @@ class ChatBot:
         """
         sentence = sentence.strip()
         unk_token_id = self.word_to_id_dict["<UNK>"]
-        sentence_tokens = list(filter(lambda s: bool(re.search('[a-zA-Z]', s)), nltk.word_tokenize(sentence)))
+        sentence_tokens = list(filter(lambda s: re.search('[a-zA-Z]', s), nltk.word_tokenize(sentence)))
         length = length if length else len(sentence_tokens)
         vector = np.zeros(length, dtype=int)
 
@@ -380,22 +383,23 @@ class ChatBot:
         :param verbose: update messages during execution.
         :return: The number question-answer pairs encoded.
         """
+        # TODO: test the re.search filter and test train some stuff with filters
         def is_valid_data(question, answer):
             q_count, a_count = 0, 0
-            q_has_qmark, a_has_qmark = False, False
+            q_has_mark, a_has_mark = False, False
             for tok in nltk.word_tokenize(question):
                 if '?' in tok:
-                    q_has_qmark = True
-                if bool(re.search('[a-zA-Z]', tok)):
+                    q_has_mark = True
+                if re.search('[a-zA-z]', tok):
                     q_count += 1
             for tok in nltk.word_tokenize(answer):
                 if '?' in tok:
-                    a_has_qmark = True
-                if bool(re.search('[a-zA-Z]', tok)):
-                    q_count += 1
-            if self.train_data_filter_mode == 1 and not q_has_qmark:
+                    a_has_mark = True
+                if re.search('[a-zA-z]', tok):
+                    a_count += 1
+            if self.train_data_filter_mode == 1 and not q_has_mark:
                 return False
-            if self.train_data_filter_mode == 2 and not(q_has_qmark and a_has_qmark):
+            if self.train_data_filter_mode == 2 and not(q_has_mark and a_has_mark):
                 return False
             return q_count <= self.n_in and a_count <= self.n_out
 
@@ -422,13 +426,13 @@ class ChatBot:
         self._encoded_x1, self._encoded_x2, self._encoded_y = encoded_x1, encoded_x2, encoded_y
         self._trained_QA_pairs = trained_QA_pairs
 
-        pickle.dump({"source": self.last_trained_file, "filter": self.train_data_filter_mode,
+        pickle.dump({"signature": self.last_trained_file_sig, "filter": self.train_data_filter_mode,
                      "data": encoded_x1}, open("cache/x1.pickle", 'wb'))
-        pickle.dump({"source": self.last_trained_file, "filter": self.train_data_filter_mode,
+        pickle.dump({"signature": self.last_trained_file_sig, "filter": self.train_data_filter_mode,
                      "data": encoded_x2}, open("cache/x2.pickle", 'wb'))
-        pickle.dump({"source": self.last_trained_file, "filter": self.train_data_filter_mode,
+        pickle.dump({"signature": self.last_trained_file_sig, "filter": self.train_data_filter_mode,
                      "data": encoded_y}, open("cache/y.pickle", 'wb'))
-        pickle.dump({"source": self.last_trained_file, "filter": self.train_data_filter_mode,
+        pickle.dump({"signature": self.last_trained_file_sig, "filter": self.train_data_filter_mode,
                      "data": trained_QA_pairs}, open("cache/trained_QA_pairs.pickle", 'wb'))
 
         print("Cached encoded training data.")
@@ -449,12 +453,12 @@ class ChatBot:
             QA_file_dict = pickle.load(open("cache/trained_QA_pairs.pickle", 'rb'))
 
             try:
-                if not (self.last_trained_file == x1_file_dict['source'] == x2_file_dict['source']
-                        == x2_file_dict['source'] == y_file_dict['source'] == QA_file_dict['source']):
-                    raise ValueError("Miss matched cached source.")
+                if not (self.last_trained_file_sig == x1_file_dict["signature"] == x2_file_dict["signature"]
+                        == x2_file_dict["signature"] == y_file_dict["signature"] == QA_file_dict["signature"]):
+                    raise ValueError("Miss matched source of cached file.")
                 if not (self.train_data_filter_mode == x1_file_dict['filter'] == x2_file_dict['filter']
                         == x2_file_dict['filter'] == y_file_dict['filter'] == QA_file_dict['filter']):
-                    raise ValueError("Miss matched cached filter.")
+                    raise ValueError("Miss matched data filter of cached file.")
                 self._encoded_x1 = x1_file_dict['data']
                 self._encoded_x2 = x2_file_dict['data']
                 self._encoded_y = y_file_dict['data']
@@ -490,6 +494,7 @@ class ChatBot:
                              if there is a cached copy.
         :param verbose: update messages during training.
         """
+        self.last_trained_file_sig = f"{data_file} (last_mod: {os.path.getmtime(data_file)})"
         self.last_trained_file = data_file
         self.train_data_filter_mode = filter_mode
 
@@ -499,7 +504,7 @@ class ChatBot:
         if self.has_valid_encodings():
             print("[!] Using cached training data encodings.")
         else:
-            training_data_pairs = json.load(open(data_file))["question_answer_pairs"]
+            training_data_pairs = json.load(open(self.last_trained_file))["question_answer_pairs"]
             self._create_and_cache_encoding(training_data_pairs=training_data_pairs, verbose=verbose)
 
         print(f"Size of encoded training data: {len(self._encoded_x1)}")

@@ -1,7 +1,6 @@
 import nltk
 import json
 import sys
-from datetime import datetime
 import os
 
 dat = []
@@ -55,14 +54,14 @@ if os.path.isfile("dataset.txt"):
     for line in new_stuff:
         if not line:
             continue
-        question, answer = line.split("\n")
+        lst = line.split("\n")
+        question, answer = lst[0], lst[1]
         Q_A_pairs.append((question, answer))
         Q.append(question)
         A.append(answer)
 
 dump = {
-    "source": file_name,
-    "creation_date": str(datetime.utcnow()) + ' UTC',
+    "signature": f"{file_name} (last_mod: {os.path.getmtime(file_name)})",
     "question_answer_pairs": Q_A_pairs,
     "vocab_data": Q_A_pairs,
     "questions": Q,
