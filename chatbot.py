@@ -64,22 +64,22 @@ class ChatBot:
         self.n_in, self.n_out = n_in, n_out
         self.vocab_size = vocab_size
         self.encoder, self.decoder = None, None
-        self.last_trained_file_sig = None
-        self.last_trained_file = None
+        self.train_data_file_sig = None
+        self.train_data_file = None
         self.train_data_filter_mode = 0
 
         if os.path.isfile("cache/vocab.pickle") and not ignore_cache:
             try:
                 self.vocab_data_dict = pickle.load(open("cache/vocab.pickle", 'rb'))
                 if len(self.vocab_data_dict["word_to_id"]) != len(self.vocab_data_dict["word_to_id"]):
-                    raise ValueError("'cache/vocab.pickle' dictionary lengths do not match.")
+                    raise ValueError("Cached vocab's dictionary lengths do not match.")
                 if len(self.vocab_data_dict["word_to_id"]) != vocab_size:
-                    raise ValueError(f"'cache/vocab.pickle' vocab size is not {vocab_size}.")
+                    raise ValueError(f"Cached vocab size is not {vocab_size}.")
                 if self.vocab_file_sig != self.vocab_data_dict["signature"]:
                     raise ValueError(f"{self.vocab_file} is not the source file of 'cache/vocab.pickle'.")
                 if self.ner_enabled and ("NER_tokens" not in self.vocab_data_dict.keys()
                                          or "NER_label_to_token_dict" not in self.vocab_data_dict.keys()):
-                    raise ValueError("'cache/vocab.pickle' does not contain NER data.")
+                    raise ValueError("Cached vocab does not contain NER data.")
                 print("[!] Using cached vocab.")
             except Exception as e:
                 print(f"Exception encountered when reading vocab data: {type(e).__name__}, {e}")
@@ -100,7 +100,7 @@ class ChatBot:
     def __str__(self):
         return f"ChatBot Object: Vocab Size={self.vocab_size}, N_in={self.n_in}, N_out={self.n_out}," \
             f" Vocab File={self.vocab_file_sig}, NER={self.ner_enabled}," \
-            f" Training Data={self.last_trained_file_sig}, Filter Mode={self.train_data_filter_mode}"
+            f" Training Data={self.train_data_file_sig}, Filter Mode={self.train_data_filter_mode}"
 
     def __bool__(self):
         return self.encoder is not None and self.decoder is not None
@@ -233,13 +233,14 @@ class ChatBot:
                 process_for_freq(itertools.chain(nltk.word_tokenize(question), nltk.word_tokenize(answer)))
                 progress_message()
         else:
-            raise IOError(f"Vocab data: '{vocab_data}' is not supported.")
+            raise ValueError(f"Vocab data: '{vocab_data}' is not supported.")
 
+        # Hardcoded special tokens, DO NOT change the order of PADD, START and UNK.
         special_tokens = ["<PADD>", "<START>", "<UNK>"] + list(ner_label_tokens)
-        top_vocab_tok = sorted(list(word_freq.keys()), key=lambda w: word_freq.get(w, 0), reverse=True)
-        vocab = top_vocab_tok[:self.vocab_size - len(special_tokens)]
-        np.random.shuffle(vocab)  # Shuffle for validation check of cached files.
-        vocab = special_tokens + vocab
+        top_vocab_toks = sorted(list(word_freq.keys()), key=lambda w: word_freq.get(w, 0), reverse=True)
+        top_vocab_toks = top_vocab_toks[:self.vocab_size - len(special_tokens)]
+        np.random.shuffle(top_vocab_toks)  # Shuffle for validation check of cached files.
+        vocab = special_tokens + top_vocab_toks
 
         if self.ner_enabled:
             dump = {"signature": self.vocab_file_sig,
@@ -262,17 +263,15 @@ class ChatBot:
 
         :param sentence: A string that is to be vectorized.
                          Note that it CAN include punctuation and unknown words.
-        :param length: The length of the returned vector. Note that it defaults to
-                       the number of tokens in SENTENCE.
+        :param length: The length of the returned vector. It defaults to the number
+                       of tokens in SENTENCE.
         :return: an encoding/vector (using this objects vocab) of the sentence.
         """
         sentence = sentence.strip()
-        # TODO: CHECK LOGIC FOR THESE TOKENS... THEY ARE SPECIAL AND ITS MESSING WITH RANDOMIZE LOGIC...
-        unk_token_id = self.word_to_id_dict["<UNK>"]
-        pad_token_id = self.word_to_id_dict["<PADD>"]
+        # TODO: (save) then allow punctuation...
         sentence_tokens = list(filter(lambda s: re.search('[a-zA-Z]', s), nltk.word_tokenize(sentence)))
         length = length if length else len(sentence_tokens)
-        vector = np.full(length, pad_token_id)
+        vector = np.zeros(length, dtype=int)  # 0 = token id for '<PADD>'.
 
         entity = {}
         if self.ner_enabled and any(w for w in sentence_tokens if w in self.ner_tokens):
@@ -284,7 +283,7 @@ class ChatBot:
             if word in entity:
                 word_id = self.word_to_id_dict[entity[word]]
             else:
-                word_id = self.word_to_id_dict.get(word.lower(), unk_token_id)
+                word_id = self.word_to_id_dict.get(word.lower(), 2)  # 2 = token id for '<UNK>'.
             vector[i] = word_id
         return vector
 
@@ -319,7 +318,7 @@ class ChatBot:
             Y_encoded = np.empty(this_batch_size, dtype=bytearray)
 
             if this_batch_size == 1:
-                index = queue.popleft()
+                index = queue.pop()
                 queue.extend([index, index])
                 this_batch_size = 2
 
@@ -353,7 +352,7 @@ class ChatBot:
             q_vec_ref = self.vectorize(question_str, self.n_in)
             a_vec_ref = self.vectorize(answer_str, self.n_out)
             a_shift_vec_ref = np.roll(a_vec_ref, 1)
-            a_shift_vec_ref[0] = self.word_to_id_dict["<START>"]
+            a_shift_vec_ref[0] = 1  # 1 = token id for '<START>'.
 
             q_vec = self._encoded_x1[i]
             a_vec = self._encoded_y[i]
@@ -414,7 +413,7 @@ class ChatBot:
                 q_vec = self.vectorize(q, self.n_in)
                 a_vec = self.vectorize(a, self.n_out)
                 a_shift_vec = np.roll(a_vec, 1)
-                a_shift_vec[0] = self.word_to_id_dict["<START>"]
+                a_shift_vec[0] = 1  # 1 = token id for '<START>'
 
                 trained_QA_pairs.append((q, a))
                 encoded_x1.append(q_vec)
@@ -428,19 +427,19 @@ class ChatBot:
         self._encoded_x1, self._encoded_x2, self._encoded_y = encoded_x1, encoded_x2, encoded_y
         self._trained_QA_pairs = trained_QA_pairs
 
-        pickle.dump({"signature": self.last_trained_file_sig, "filter": self.train_data_filter_mode,
+        pickle.dump({"signature": self.train_data_file_sig, "filter": self.train_data_filter_mode,
                      "data": encoded_x1}, open("cache/x1.pickle", 'wb'))
-        pickle.dump({"signature": self.last_trained_file_sig, "filter": self.train_data_filter_mode,
+        pickle.dump({"signature": self.train_data_file_sig, "filter": self.train_data_filter_mode,
                      "data": encoded_x2}, open("cache/x2.pickle", 'wb'))
-        pickle.dump({"signature": self.last_trained_file_sig, "filter": self.train_data_filter_mode,
+        pickle.dump({"signature": self.train_data_file_sig, "filter": self.train_data_filter_mode,
                      "data": encoded_y}, open("cache/y.pickle", 'wb'))
-        pickle.dump({"signature": self.last_trained_file_sig, "filter": self.train_data_filter_mode,
+        pickle.dump({"signature": self.train_data_file_sig, "filter": self.train_data_filter_mode,
                      "data": trained_QA_pairs}, open("cache/trained_QA_pairs.pickle", 'wb'))
 
         print("Cached encoded training data.")
         return True
 
-    def _load_encoded_training_data_cache(self):
+    def _load_cached_encoded_train_data(self):
         """
         Private method to load the encoded training data from cache.
         Does not load if the source file of the cache doesnt match the training
@@ -455,7 +454,7 @@ class ChatBot:
             QA_file_dict = pickle.load(open("cache/trained_QA_pairs.pickle", 'rb'))
 
             try:
-                if not (self.last_trained_file_sig == x1_file_dict["signature"] == x2_file_dict["signature"]
+                if not (self.train_data_file_sig == x1_file_dict["signature"] == x2_file_dict["signature"]
                         == x2_file_dict["signature"] == y_file_dict["signature"] == QA_file_dict["signature"]):
                     raise ValueError("Miss matched source of cached file.")
                 if not (self.train_data_filter_mode == x1_file_dict['filter'] == x2_file_dict['filter']
@@ -496,18 +495,18 @@ class ChatBot:
                              if there is a cached copy.
         :param verbose: update messages during training.
         """
-        self.last_trained_file_sig = f"{data_file} (last_mod: {os.path.getmtime(data_file)})"
-        self.last_trained_file = data_file
+        self.train_data_file_sig = f"{data_file} (last_mod: {os.path.getmtime(data_file)})"
+        self.train_data_file = data_file
         self.train_data_filter_mode = filter_mode
 
         if not is_force_encode:
-            self._load_encoded_training_data_cache()
+            self._load_cached_encoded_train_data()
 
         if self.has_valid_encodings():
             print("[!] Using cached training data encodings.")
         else:
-            training_data_pairs = json.load(open(self.last_trained_file))["question_answer_pairs"]
-            self._create_and_cache_encoding(training_data_pairs=training_data_pairs, verbose=verbose)
+            data_pairs = json.load(open(self.train_data_file))["question_answer_pairs"]
+            self._create_and_cache_encoding(training_data_pairs=data_pairs, verbose=verbose)
 
         print(f"Size of encoded training data: {len(self._encoded_x1)}")
         print(f"-==Training on {len(self._encoded_y)} Question-Answer pairs==-")
@@ -538,7 +537,7 @@ class ChatBot:
         """
         curr_in_state = self.encoder.predict(X_in)
         curr_out_state = [
-            np.array(self._list_one_hot_encode([[self.word_to_id_dict["<START>"]]], len(self.word_to_id_dict)))
+            np.array(self._list_one_hot_encode([[1]], len(self.word_to_id_dict)))  # 1 = token id for '<START>'.
         ]
         Y_hat = []
         for t in range(self.n_in):
