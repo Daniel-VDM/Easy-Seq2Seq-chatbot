@@ -7,7 +7,6 @@ import spacy
 import shutil
 import json
 import nltk
-import re
 from collections import deque
 from optparse import OptionParser
 from keras.models import Model
@@ -202,7 +201,7 @@ class ChatBot:
 
         def process_for_freq(tokens):
             for tok in tokens:
-                if re.search('[a-zA-Z]', tok) and tok not in ner_tokens:
+                if tok not in ner_tokens:
                     tok = tok.lower()
                     if tok in word_freq:
                         word_freq[tok] += 1
@@ -269,7 +268,7 @@ class ChatBot:
         """
         sentence = sentence.strip()
         # TODO: (save) then allow punctuation...
-        sentence_tokens = list(filter(lambda s: re.search('[a-zA-Z]', s), nltk.word_tokenize(sentence)))
+        sentence_tokens = nltk.word_tokenize(sentence)
         length = length if length else len(sentence_tokens)
         vector = np.zeros(length, dtype=int)  # 0 = token id for '<PADD>'.
 
@@ -386,23 +385,12 @@ class ChatBot:
         :return: The number question-answer pairs encoded.
         """
         def is_valid_data(question, answer):
-            q_count, a_count = 0, 0
-            q_has_mark, a_has_mark = False, False
-            for tok in nltk.word_tokenize(question):
-                if '?' in tok:
-                    q_has_mark = True
-                if re.search('[a-zA-z]', tok):
-                    q_count += 1
-            for tok in nltk.word_tokenize(answer):
-                if '?' in tok:
-                    a_has_mark = True
-                if re.search('[a-zA-z]', tok):
-                    a_count += 1
-            if self.train_data_filter_mode == 1 and not q_has_mark:
+            q_toks, a_toks = nltk.word_tokenize(question), nltk.word_tokenize(answer)
+            if self.train_data_filter_mode == 1 and '?' not in q_toks:
                 return False
-            if self.train_data_filter_mode == 2 and not(q_has_mark and a_has_mark):
+            if self.train_data_filter_mode == 2 and not('?' in q_toks and '?' in a_toks):
                 return False
-            return q_count <= self.n_in and a_count <= self.n_out
+            return len(q_toks) <= self.n_in and len(a_toks) <= self.n_out
 
         encoded_x1, encoded_x2, encoded_y = [], [], []
         trained_QA_pairs = []
