@@ -24,10 +24,10 @@ class ChatBot:
             os.makedirs("cache")
 
         # Common instance attrs.
-        self.ner_enabled = ner_enabled
-        self.ignore_cache = ignore_cache
-        self.vocab_file = vocab_file
         self.n_in, self.n_out = n_in, n_out
+        self.ignore_cache = ignore_cache
+        self.ner_enabled = ner_enabled
+        self.vocab_file = vocab_file
         self.vocab_file_sig = f"{vocab_file} (last_mod: {os.path.getmtime(vocab_file)})"
         self.train_data_file = None
         self.train_data_file_sig = None
@@ -137,17 +137,17 @@ class ChatBot:
         Private Method used in the constructor.
 
         Creates and caches a vocab from this instance's vocab file. Note that the
-        vocab file is expected to come as a json file where the vocab data is
+        vocab file is expected to come as a .json file where the vocab data is
         saved on row: 'vocab_data'. The vocab data is either a list of question-answer
-        pairs or a list of sentences/strings.
+        pairs/tuples or a list of sentences/strings.
 
-        The created vocab uses most frequent tokens first when truncating the
+        The created vocab uses the most frequent tokens first when truncating the
         vocab to fit the vocab size.
 
-        Note that the cached vocab also saves a set of NER tokens (from the given
+        Note that this method also saves a set of NER tokens (from the given
         vocab file) for future references if NER is enabled.
 
-        This function is very expensive if NER is enabled.
+        This method can take a while if NER is enabled.
         """
         count = 0
         tok_freq = {}
@@ -161,10 +161,11 @@ class ChatBot:
                 ner_label_tokens.add(f"<{entity.label_}>")
                 for tok in nltk.word_tokenize(entity.text):
                     ner_tokens.add(tok)
-                    if f"<{entity.label_}>" in ner_label_to_token_dict:
-                        ner_label_to_token_dict[f"<{entity.label_}>"].add(tok)
+                    label = f"<{entity.label_}>"
+                    if label in ner_label_to_token_dict:
+                        ner_label_to_token_dict[label].add(tok)
                     else:
-                        ner_label_to_token_dict[f"<{entity.label_}>"] = {tok}
+                        ner_label_to_token_dict[label] = {tok}
 
         def process_for_freq(tokens):
             for tok in tokens:
@@ -201,7 +202,7 @@ class ChatBot:
         else:
             raise ValueError(f"Vocab data: '{vocab_data}' is not supported.")
 
-        # Hardcoded special tokens, DO NOT change the order of PADD, START and UNK.
+        # Hardcoded special tokens. DO NOT change the order of PADD, START and UNK.
         special_tokens = ["<PADD>", "<START>", "<UNK>"] + list(ner_label_tokens)
         top_vocab_toks = sorted(list(tok_freq.keys()), key=lambda w: tok_freq.get(w, 0), reverse=True)
         if vocab_size is not None:
@@ -221,7 +222,7 @@ class ChatBot:
                     "token_to_id": {c: i for i, c in enumerate(vocab)},
                     "id_to_token": {i: c for i, c in enumerate(vocab)}}
         pickle.dump(dump, open("cache/vocab.pickle", 'wb'))
-        print(f"\nCached vocab file. Vocab size = {vocab_size}, Vocab Data = {self.vocab_file_sig}")
+        print(f"\nCached vocab file. Vocab size = {vocab_size}, Vocab Data = {self.vocab_file}")
         self.vocab_data_dict = dump
         return dump
 
@@ -263,17 +264,19 @@ class ChatBot:
 
         return True
 
-    def vocab_encode(self, sentence, length=None):
+    def v_encode(self, sentence, length=None):
         """
+        Vocab encode the SENTENCE into a vector with LENGTH elements.
+
         Note that this is NOT a one-hot encoding. Instead, it uses the vocab
         to create an encoded vector where entry i of said encoding is the
-        token id of L[i]; where L is the list of tokens of SENTENCE.
+        token id of L[i] (L = list of tokens of SENTENCE).
 
         :param sentence: A string that is to be encoded. Note that it CAN include
                          punctuation and unknown words/tokens.
         :param length: The length of the returned vector. It defaults to the number
                        of tokens in SENTENCE.
-        :return: an encoding/vector (using this objects vocab) of the sentence.
+        :return: The vocab vector encoding of the sentence as described above.
         """
         sentence = sentence.strip()
         sentence_tokens = nltk.word_tokenize(sentence)
@@ -320,14 +323,8 @@ class ChatBot:
         """
         Private method used in the 'train' & 'batch_generator' methods of this class.
 
-        This method creates and cache a 'vocab encoded' training data (from DATA_FILE)
-        for the training generator.
-
-        The 'vocab encoding' is as follows:
-            Given a sentence, we create an array/vector of size N_in or N_out
-            (depending on which data we are encoding) where element i of
-            said vector is token i's ID in the token_to_id_dict dictionary
-            of this object.
+        This method creates and caches 3 matrices of 'vocab encoded' training data
+        (training data is from TRAINING_DATA_PAIRS) for the training data generator.
 
         :param training_data_pairs: A list of question answer pairs as training data.
         :param verbose: update messages during execution.
@@ -346,8 +343,8 @@ class ChatBot:
         print("-==Vocab Encoding Training Data==-")
         for i, (q, a) in enumerate(training_data_pairs):
             if is_valid_data(q, a):
-                q_vec = self.vocab_encode(q, self.n_in)
-                a_vec = self.vocab_encode(a, self.n_out)
+                q_vec = self.v_encode(q, self.n_in)
+                a_vec = self.v_encode(a, self.n_out)
                 a_shift_vec = np.roll(a_vec, 1)
                 a_shift_vec[0] = 1  # 1 = token id for '<START>'
 
@@ -384,10 +381,10 @@ class ChatBot:
 
         IMPORTANT:
         This generator relies on the private method: '_create_and_cache_vocab_encoding'
-        being called once before this generator's call as it requires the vocab encodings
-        that said method generates.
+        being called once before this generator's call as it requires the 3 vocab encoded
+        training data matrices that said method generates.
 
-        :param batch_size: The size of the batch used in training.
+        :param batch_size: The size of each batch yielded.
         """
         if not self._v_encoded_x1 or not self._v_encoded_x2 or not self._v_encoded_y:
             raise RuntimeError("Attempted to generate one-hot encodings without vocab encoded training data.")
@@ -432,7 +429,7 @@ class ChatBot:
         The 'hash' portion of this bloom filter idea is solely dependent on numpy's
         shuffle of the vocab.
 
-        Note that there is a slim chance of a false positive which can be lower
+        Note that there is a slim chance of a false positive. This chance can be lowered
         by increasing N.
         """
         if self._v_encoded_x1 is None or self._v_encoded_x2 is None \
@@ -446,8 +443,8 @@ class ChatBot:
         for i in arr:
             question_str, answer_str = self._trained_QA_pairs[i]
 
-            q_vec_ref = self.vocab_encode(question_str, self.n_in)
-            a_vec_ref = self.vocab_encode(answer_str, self.n_out)
+            q_vec_ref = self.v_encode(question_str, self.n_in)
+            a_vec_ref = self.v_encode(answer_str, self.n_out)
             a_shift_vec_ref = np.roll(a_vec_ref, 1)
             a_shift_vec_ref[0] = 1  # 1 = token id for '<START>'.
 
@@ -463,8 +460,8 @@ class ChatBot:
     def _load_cached_v_encoded_train_data(self):
         """
         Private method to load the encoded training data from cache.
-        Does not load if the source file of the cache doesnt match the training
-        data file of this object (or is not present).
+        Does not load if the signature or filter does not match this object's
+        data file or filter setting (respectively).
         """
         if not self.ignore_cache and os.path.isfile("cache/x1.pickle") \
                 and os.path.isfile("cache/x2.pickle") and os.path.isfile("cache/y.pickle") \
@@ -498,7 +495,6 @@ class ChatBot:
         file is has a list of question-answer pairs saved on row: 'question_answer_pairs'.
             Said list has the following form:
                 [...,["Did you change your hair?", "No."], ["Hi!", "Hello."],...]
-        Note that said file needs to be in the same dir as this script.
 
         Filter Modes:
             0) Only take Questions that have N_in number of tokens and only take
@@ -511,9 +507,9 @@ class ChatBot:
         :param latent_dim: The dimensionality of the Encoder and Decoder's (the model's) LSTM.
         :param epoch: number of epochs in training.
         :param batch_size: size of the batch in training.
-        :param split_pct: a float between 0 and 1. It is the percentage of
-                                 training data held out for validation.
-        :param verbose: update messages during training.
+        :param split_pct: a float between 0 and 1. It is the percentage of training data
+                          that is held out for validation.
+        :param verbose: Boolean to enable/disable update messages during training.
         """
         assert len(self.token_to_id_dict) == len(self.id_to_token_dict)
 
@@ -582,16 +578,19 @@ class ChatBot:
         """
         if not self:
             raise RuntimeError("Attempted to chat with an untrained model.")
-        print("Chat Bot ready, type anything to start: (Type Ctrl + C to exit)")
-        while True:
-            sys.stdout.write(">")
-            sys.stdout.flush()
-            input_str = input()
-            vocab_encoded_X_in = [self.vocab_encode(input_str, self.n_in)]
-            X_in = self._one_hot_encode(vocab_encoded_X_in)
-            Y_hat = self._predict(X_in)
-            print("Response: {}".format(self._vector_to_sentece(Y_hat)))
-            print(" ")
+        print("Chat Bot ready, type anything to start: (Ctrl + C to exit)")
+        try:
+            while True:
+                sys.stdout.write(">")
+                sys.stdout.flush()
+                input_str = input()
+                vocab_encoded_X_in = [self.v_encode(input_str, self.n_in)]
+                X_in = self._one_hot_encode(vocab_encoded_X_in)
+                Y_hat = self._predict(X_in)
+                print("Response: {}".format(self._vector_to_sentece(Y_hat)))
+                print(" ")
+        except KeyboardInterrupt:
+            print("Done Chatting...")
 
     def save(self, directory, verbose):
         """
@@ -684,10 +683,6 @@ def get_saved_model(directory):
 
 if __name__ == "__main__":
     # TODO: IMPLEMENTED AND TEST DECODER NER FEATURES.
-    # TODO: ALSO TEST MODELS THAT DO NOT HAVE NERs.
-    # TODO: HIGHARCHICAL STRUCTURE FOR PUBLISHING...
-    # TODO: refactor for efficientcy and clenlyness and names of files...
-    # TODO: Documentation & REFACTOR TO REMOVE REDUNDANT INFO.
     # TODO: First Time installer...
     # TODO: publish README...
     opts = get_options()
