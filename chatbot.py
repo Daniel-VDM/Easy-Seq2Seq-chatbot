@@ -148,6 +148,7 @@ class ChatBot:
         vocab file) for future references if NER is enabled.
 
         This method can take a while if NER is enabled.
+        # TODO: make this more efficient without using the nested functions... (? maybe)
         """
         count = 0
         tok_freq = {}
