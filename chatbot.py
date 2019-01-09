@@ -575,7 +575,7 @@ class ChatBot:
             Y_hat.append(prediction)
         return np.array(Y_hat)
 
-    def _vector_to_sentece(self, vector):
+    def _vector_to_sentence(self, vector):
         """
         Private method used in the 'chat' method.
 
@@ -605,7 +605,7 @@ class ChatBot:
                 vocab_encoded_X_in = [self.v_encode(input_str, self.n_in)]
                 X_in = self._one_hot_encode(vocab_encoded_X_in)
                 Y_hat = self._predict(X_in)
-                print("Response: {}".format(self._vector_to_sentece(Y_hat)))
+                print("Response: {}".format(self._vector_to_sentence(Y_hat)))
                 print(" ")
         except KeyboardInterrupt:
             print("\nDone Chatting...")
