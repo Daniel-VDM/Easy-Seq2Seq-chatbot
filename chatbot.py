@@ -65,7 +65,7 @@ class ChatBot:
             self.ner_label_to_token_dict = self.vocab_data_dict["NER_label_to_token_dict"]
 
         # Training attrs.
-        self._v_encoded_x1, self._v_encoded_x2, self._v_encoded_y = None, None, None
+        self._v_encoded_x1, self._v_encoded_x2, self._v_encoded_y = [], [], []
         self._trained_QA_pairs = []
 
     def __repr__(self):
@@ -82,6 +82,8 @@ class ChatBot:
         Private method use in the train method.
 
         Creates a validation split of X_1, X_2 and Y.
+
+        Note: X_1, X_2 and Y are a list of one-hot encoded sentences.
 
         This requires X_1, X_2 and Y to have at least 2 elements.
         And assumes X_1, X_2 and Y have the same number of elements.
@@ -114,11 +116,13 @@ class ChatBot:
         scheme instead of a deterministic scheme. So, each element of X_1
         X_2 and Y have a PERCENTAGE chance of being use as validation data.
 
+        Note: X_1, X_2 and Y are a list of one-hot encoded sentences.
+
         This requires X_1, X_2 and Y to have at least 2 elements.
         And assumes X_1, X_2 and Y have the same number of elements.
         """
-        X_1t, X_2t, Y_t = [X_1[1]], [X_2[1]], [Y[1]]
-        X_1v, X_2v, Y_v = [X_1[0]], [X_2[0]], [Y[0]]
+        X_1t, X_2t, Y_t = [X_1[0]], [X_2[0]], [Y[0]]
+        X_1v, X_2v, Y_v = [X_1[1]], [X_2[1]], [Y[1]]
         for i in range(2, X_1.shape[0]):
             if np.random.uniform() < percentage:
                 X_1v.append(X_1[i])
@@ -134,7 +138,7 @@ class ChatBot:
 
     def _create_and_cache_vocab(self, vocab_size):
         """
-        Private Method used in the constructor.
+        Private method used in the constructor.
 
         Creates and caches a vocab from this instance's vocab file. Note that the
         vocab file is expected to come as a .json file where the vocab data is
@@ -148,7 +152,6 @@ class ChatBot:
         vocab file) for future references if NER is enabled.
 
         This method can take a while if NER is enabled.
-        # TODO: make this more efficient without using the nested functions... (? maybe)
         """
         count = 0
         tok_freq = {}
@@ -183,10 +186,10 @@ class ChatBot:
             sys.stdout.write(f"\rCreating Vocab, parsed {count}/{len(vocab_data)} lines of vocab data.")
             sys.stdout.flush()
 
-        try:
-            first_vocab_el = vocab_data[0]
-        except IndexError:
+        if len(vocab_data) == 0:
             raise ValueError(f"{self.vocab_file} contains no data.")
+
+        first_vocab_el = vocab_data[0]
 
         if type(first_vocab_el) == str:
             for line in vocab_data:
@@ -300,7 +303,7 @@ class ChatBot:
 
     def _one_hot_encode(self, vocab_encoded_vector):
         """
-        Private method for train and decoder/predictor methods.
+        Private method for the 'train' and decoder/predictor methods.
 
         This creates the true one hot encoded tensor from the VOCAB_ENCODED_VECTOR.
 
@@ -311,11 +314,9 @@ class ChatBot:
         :param vocab_encoded_vector: The encoded vector described above.
         """
         if len(vocab_encoded_vector) > 0:
-            n = len(vocab_encoded_vector[0])
-            encoding = np.zeros((len(vocab_encoded_vector), n, len(self.token_to_id_dict)))
+            shape = (len(vocab_encoded_vector), len(vocab_encoded_vector[0]), len(self.token_to_id_dict))
+            encoding = np.zeros(shape)
             for i, seq in enumerate(vocab_encoded_vector):
-                if len(seq) != n:
-                    raise RuntimeError("Vocab encoded sentences do not have matching dimensions.")
                 for j, tok_id in enumerate(seq):
                     encoding[i, j, tok_id] = 1
             return encoding
@@ -375,17 +376,21 @@ class ChatBot:
 
     def batch_generator(self, batch_size=32):
         """
-        A generator that generates a list (length = BATCH_SIZE) of one-hot encoded
-        vectors of the training data at each yield.
+        A generator that generates 3 tensors of one-hot encoded sentences
+        from the training data at each yield. X1 are for the questions,
+        Y are for the answers and X2 are for 1 time step forward shifted answers.
+        The BATCH_SIZE dictates the number of 'encoded' sentences in a yielded
+        tensor (effectively the length of said tensor).
 
-        Each batch is created from a randomized selection of un-yielded training data.
+        Each batch is created from a randomized selection of un-yielded
+        training data.
 
         IMPORTANT:
-        This generator relies on the private method: '_create_and_cache_vocab_encoding'
-        being called once before this generator's call as it requires the 3 vocab encoded
-        training data matrices that said method generates.
+        This relies on the private method: '_create_and_cache_vocab_encoding'
+        being called once before this generator's call as it requires the 3
+        vocab encoded training data matrices that said method generates.
 
-        :param batch_size: The size of each batch yielded.
+        :param batch_size: The number of sentences in each batch yielded.
         """
         if not self._v_encoded_x1 or not self._v_encoded_x2 or not self._v_encoded_y:
             raise RuntimeError("Attempted to generate one-hot encodings without vocab encoded training data.")
@@ -422,21 +427,23 @@ class ChatBot:
 
     def has_valid_vocab_encodings(self):
         """
-        Check if the current instance has vocab encodings that uses the instance's vocab.
+        Check if the current instance has vocab encodings that uses
+        this instance's vocab.
 
-        An encoding is valid if this object's vocab was used for this object's encodings.
+        An encoding is valid if this object's vocab was used for this
+        object's encodings.
 
         The validation uses an idea similar to the bloom filter.
-        The 'hash' portion of this bloom filter idea is solely dependent on numpy's
-        shuffle of the vocab.
+        The 'hash' portion of this bloom filter idea is solely
+        dependent on numpy's shuffle of the vocab.
 
-        Note that there is a slim chance of a false positive. This chance can be lowered
-        by increasing N.
+        Note that there is a slim chance of a false positive.
+        This chance can be lowered by increasing N.
         """
-        if self._v_encoded_x1 is None or self._v_encoded_x2 is None \
-                or self._v_encoded_y is None or not self._trained_QA_pairs:
+        if not self._v_encoded_x1 or not self._v_encoded_x2 \
+                or not self._v_encoded_y or not self._trained_QA_pairs:
             return False
-        if len(self._v_encoded_x1) != len(self._v_encoded_x2) != len(self._v_encoded_y):
+        if not(len(self._v_encoded_x1) == len(self._v_encoded_x2) == len(self._v_encoded_y)):
             return False
 
         N = 25
@@ -461,8 +468,8 @@ class ChatBot:
     def _load_cached_v_encoded_train_data(self):
         """
         Private method to load the encoded training data from cache.
-        Does not load if the signature or filter does not match this object's
-        data file or filter setting (respectively).
+        This does not load if the signature or filter does not
+        match this object's data file or filter setting (respectively).
         """
         if not self.ignore_cache and os.path.isfile("cache/x1.pickle") \
                 and os.path.isfile("cache/x2.pickle") and os.path.isfile("cache/y.pickle") \
@@ -505,7 +512,7 @@ class ChatBot:
 
         :param data_file: The json file containing the question-answer pairs.
         :param filter_mode: An int that determines the filter mode of the training data.
-        :param latent_dim: The dimensionality of the Encoder and Decoder's (the model's) LSTM.
+        :param latent_dim: The dimensionality of the Encoder and Decoder's LSTM.
         :param epoch: number of epochs in training.
         :param batch_size: size of the batch in training.
         :param split_pct: a float between 0 and 1. It is the percentage of training data
@@ -548,7 +555,11 @@ class ChatBot:
         return True
 
     def _predict(self, X_in):
-        """ Private method used for main chat loop.
+        """
+        Private method used in the 'chat' method.
+
+        This predicts a response (aka decoding) based on the one-hot
+        encoded sentence X_IN.
         """
         curr_in_state = self.encoder.predict(X_in)
         curr_out_state = [
@@ -563,7 +574,10 @@ class ChatBot:
         return np.array(Y_hat)
 
     def _vector_to_sentece(self, vector):
-        """ Private method used for main chat loop.
+        """
+        Private method used in the 'chat' method.
+
+        Converts a (predicted) one-hot encoded VECTOR to a sentence.
         """
         sentence_tokens = []
         for el in vector:
@@ -575,7 +589,8 @@ class ChatBot:
         return " ".join(sentence_tokens)
 
     def chat(self):
-        """ Main chat loop with the chatbot.
+        """
+        Main chat loop of the chat bot.
         """
         if not self:
             raise RuntimeError("Attempted to chat with an untrained model.")
@@ -591,7 +606,7 @@ class ChatBot:
                 print("Response: {}".format(self._vector_to_sentece(Y_hat)))
                 print(" ")
         except KeyboardInterrupt:
-            print("Done Chatting...")
+            print("\nDone Chatting...")
 
     def save(self, directory, verbose):
         """
@@ -637,7 +652,7 @@ def get_options():
                          "the training data.")
     opts.add_option("-M", '--verbose', action="store_true", dest="verbose",
                     help="Toggles verbose on.")
-    opts.add_option('-d', '--data_file', dest='data_file', type=str, default="Cornell_Movie_Dialogs_Data.json",
+    opts.add_option('-t', '--train_file', dest='train_file', type=str, default="Cornell_Movie_Dialogs_Data.json",
                     help="The directory of the file that is used to train the model. "
                          "This file must be a json file that contains a list of question-answer"
                          "pairs/lists. Reference the included/default file for details."
@@ -713,7 +728,7 @@ if __name__ == "__main__":
 
         chat_bot = ChatBot(opts.N_in, opts.N_out, opts.vocab_size, opts.vocab_file,
                            opts.ignore_cached, opts.NER_enabled)
-        chat_bot.train(opts.data_file, opts.filter_mode, opts.latent_dim, opts.epoch,
+        chat_bot.train(opts.train_file, opts.filter_mode, opts.latent_dim, opts.epoch,
                        opts.batch_size, opts.split, opts.verbose)
 
         if new_model_name:
