@@ -446,7 +446,7 @@ class ChatBot:
         if not(len(self._v_encoded_x1) == len(self._v_encoded_x2) == len(self._v_encoded_y)):
             return False
 
-        N = 25
+        N = 50
         arr = np.random.choice(len(self._v_encoded_x1), size=min(N, len(self._v_encoded_x1)), replace=False)
         for i in arr:
             question_str, answer_str = self._trained_QA_pairs[i]
@@ -468,8 +468,10 @@ class ChatBot:
     def _load_cached_v_encoded_train_data(self):
         """
         Private method to load the encoded training data from cache.
-        This does not load if the signature or filter does not
-        match this object's data file or filter setting (respectively).
+
+        This does not load the cache file if the signature or
+        filter does not match this object's data file or filter
+        setting (respectively).
         """
         if not self.ignore_cache and os.path.isfile("cache/x1.pickle") \
                 and os.path.isfile("cache/x2.pickle") and os.path.isfile("cache/y.pickle") \
