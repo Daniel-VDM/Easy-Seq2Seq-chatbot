@@ -280,7 +280,7 @@ class ChatBot:
                          punctuation and unknown words/tokens.
         :param length: The length of the returned vector. It defaults to the number
                        of tokens in SENTENCE.
-        :return: The vocab vector encoding of the sentence as described above.
+        :return: The vocab encoding of the sentence as described above.
         """
         sentence = sentence.strip()
         sentence_tokens = nltk.word_tokenize(sentence)
@@ -541,8 +541,7 @@ class ChatBot:
         self.define_models(latent_dim, verbose=verbose)
 
         for ep in range(epoch):
-            batch_gen = self.batch_generator(batch_size=batch_size)
-            for X_1, X_2, Y, batch_counter in batch_gen:
+            for X_1, X_2, Y, batch_counter in self.batch_generator(batch_size=batch_size):
                 if verbose:
                     sys.stdout.flush()
                     sys.stdout.write('\x1b[2K')
