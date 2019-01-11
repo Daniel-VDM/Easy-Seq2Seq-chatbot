@@ -18,11 +18,20 @@ The underlying model of the ChatBot is a sequence to sequence model which is exp
 The LSTMs required for the seq2seq model was implemented using [Keras](https://keras.io/) for simplicity. Furthermore, said model uses one-hot encodings of sentences its inputs and outputs. The one hot encodings use a vocab of the most frequent words/tokens of a document. Also, name entity recognition can be used (toggled) in this script and if it is enabled, all questions and answers will effectively have their entities subbed out for their 'entity tokens' before they are one hot encoded. For example, the sentence: "She was born on September 1st, 1996" would effectively be "She was born on <DATE> <DATE> <DATE>" before it is one hot encoded. The NER used in this script is from the [spaCy NLP library](https://spacy.io/). Note that NER considerably increases the time it takes to "prepare" the training data. 
 
 ## Features
-**Model Parameters:**
+**Veriable Model Parameter:**
 
+**Training Memory Efficiency:**
 
+**Data Caching:**
+
+**Model Saving:**
 
 ## User Guide
+**Dependencies:**
+
+### Data & Vocab file details and spec
+
+### Script options
 
 ## Cornell Movie Dialogs Results
 
