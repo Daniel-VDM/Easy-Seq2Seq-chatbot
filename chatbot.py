@@ -446,7 +446,7 @@ class ChatBot:
         if not(len(self._v_encoded_x1) == len(self._v_encoded_x2) == len(self._v_encoded_y)):
             return False
 
-        N = 50
+        N = 30
         arr = np.random.choice(len(self._v_encoded_x1), size=min(N, len(self._v_encoded_x1)), replace=False)
         for i in arr:
             question_str, answer_str = self._trained_QA_pairs[i]
@@ -610,10 +610,9 @@ class ChatBot:
         except KeyboardInterrupt:
             print("\nDone Chatting...")
 
-    def save(self, directory, verbose):
+    def save(self, directory):
         """
         :param directory: The directory of where this object is going to be saved.
-        :param verbose: update messages during execution.
         """
         if not os.path.exists(directory):
             os.mkdir(directory)
@@ -628,8 +627,7 @@ class ChatBot:
         shutil.copytree("cache", f"{directory}/backup/cache")
         shutil.copyfile(self.train_data_file, f"{directory}/backup/[T-DAT]{self.train_data_file}")
         shutil.copyfile(self.vocab_file, f"{directory}/backup/[V-DAT]{self.vocab_file}")
-        if verbose:
-            print(f"\nSaved the trained model to: '{directory}'.")
+        print(f"\nSaved the trained model to: '{directory}'.")
         return True
 
 
@@ -735,5 +733,5 @@ if __name__ == "__main__":
 
         if new_model_name:
             new_model_directory = f"{opts.saved_models_dir}/{new_model_name}"
-            chat_bot.save(new_model_directory, opts.verbose)
+            chat_bot.save(new_model_directory)
     chat_bot.chat()
