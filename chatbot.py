@@ -545,7 +545,7 @@ class ChatBot:
                 if verbose:
                     sys.stdout.flush()
                     sys.stdout.write('\x1b[2K')
-                    print(f"\rEpoch: {ep}/{epoch}, Batch: {batch_counter}. \tTraining...")
+                    print(f"\rEpoch: {ep+1}/{epoch}, Batch: {batch_counter}. \tTraining...")
 
                 X_1t, X_2t, Y_t, X_1v, X_2v, Y_v = ChatBot._create_validation_split(X_1, X_2, Y, split_pct)
                 self.model.fit([X_1t, X_2t], Y_t, epochs=1, batch_size=batch_size,
