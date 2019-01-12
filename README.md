@@ -67,14 +67,85 @@ Since the goal of the script is to try out various different parameters and data
 ## User Guide
 **Dependencies:** Python 3.6+, Numpy, Keras, Tensorflow, nltk, spaCy. It is recommended to have a GPU and have Tensorflow use the GPU (requires a supported NVIDIA GPU). Also, it is recommended to have around 4 GB of system memory for relatively large models with a reasonable batch size. 
 
-### Data & Vocab json file spec
-As expected, these files must be a `.json` file and **both** require the following attributes:
+### Data & Vocab JSON file spec
+The Data and Vocab file must be a `.json` file and **both** have the following attributes:
 
-* 
+* Attr: "data". For the data file this can be a list of question-answer pairs, i.e: `[...,["Did you change your hair?", "No."], ["Hi!", "Hello."],...]`. For the vocab file, this can be just a list of sentences *or* a list of question-answer pairs.
+
+* Attr: "questions". Optional for the vocab file but mandatory for the data file. This is simply the list of questions from the question-answer pairs (for convenience). 
+
+* Attr: "answers". Optional for the vocab file but mandatory for the data file. This is simply the list of answers from the question-answer pairs (for convenience). 
+
+* Attr: "signature". Mandatory for both. It is some sort of identifier that ties back to the original source of the data, i.e: file_name + last modified time of file_name.
+
+> Sample `.json` files can be found with the script (`Cornell_Movie_Dialogs_Data.json` & `Small_Data.json`). Furthermore, one could reference `./training_data_scripts/Cornell-Data_json_creator.py` as a sample script that takes a `.csv` file and creates the desired `.json` file.
 
 ### Script options
+The script has various options that are handled by an options parser. To look up the options and their quick descriptions use the `--help` option, i.e: use the command: `python chatbot.py --help`.
 
-## Cornell Movie Dialogs Results
+Here is said help command print for reference:
+```
+Usage: chatbot.py [options]
+
+Options:
+  -h, --help            show this help message and exit
+  -i N_IN, --N_in=N_IN  The number of time steps for the encoder. Default =
+                        10.
+  -o N_OUT, --N_out=N_OUT
+                        The number of time setps for the decoder. Default =
+                        20.
+  -l LATENT_DIM, --latent_dim=LATENT_DIM
+                        The dimensionality of the Encoder and Decoder's LSTM.
+                        Default = 128.
+  -v VOCAB_SIZE, --vocab_size=VOCAB_SIZE
+                        The size of the vocab of the Chatbot. Default = None
+  -f VOCAB_FILE, --vocab_file=VOCAB_FILE
+                        The directory of the .json file that is used to define
+                        the vocab. The 'data' attribute can be either
+                        question-answer pairs or just strings/sentences.
+                        Default = whatever the train_file is.
+  -I, --ignore_cache    Forces the script to ignore the cached files.
+  -N, --NER_disable     Turns off Name Entity Recognition as part of the
+                        chatbot model. Note that NER adds a considerable
+                        amount of complexity in encoding the training data.
+  -M, --verbose         Toggles verbose on.
+  -t TRAIN_FILE, --train_file=TRAIN_FILE
+                        The directory of the .json file that is used to train
+                        the model. The 'data' attribute must be a list of
+                        question-answer pairs.Default =
+                        'Cornell_Movie_Dialogs_Data.json'
+  -c FILTER_MODE, --filter_mode=FILTER_MODE
+                        An integer that dictates the filter imposed of the
+                        data. MODES: {0, 1, 2}. Mode 0: Only take Questions
+                        that have N_in number of tokens and only take Answers
+                        that have N_out number of tokens. Mode 1: All of Mode
+                        0 AND Questions must have a '?' token. Mode 2: All of
+                        Mode 0 AND Question & Answer must have a '?' token.
+                        Default = 0
+  -e EPOCH, --epoch=EPOCH
+                        The number of epochs for training. Default = 100.
+  -b BATCH_SIZE, --batch_size=BATCH_SIZE
+                        The batch size for training. Default = 32.
+  -s SPLIT, --split=SPLIT
+                        The percentage (float between 0 - 1) of data held out
+                        for validation. Default = 0.35
+  -m SAVED_MODELS_DIR, --saved_models_dir=SAVED_MODELS_DIR
+                        The directory for all of the saved (trained) models.
+                        Default = 'saved_models'
+```
+
+### Sample Execution
+One could run the script with the following command: `python chatbot.py --N_in=10 --N_out=20 --latent_dim=128 --vocab_size=10000 --train_file=Small_Data.json --filter_mode=1 --epoch=500 --batch_size=64 --split=0.35 --verbose`
+
+If training, one should get the following (if the cache is invalid or it's the first time running the script):
+```
+```
+
+If loading a model, one should get the following:
+```
+```
+
+## Results
 
 ## Credits
 This script originally started off as a project assignment for [David Bamman's](http://people.ischool.berkeley.edu/~dbamman/) Natural Language Processing Course (Info 159/259) at UC Berkeley (with the goal of just creating a seq2seq chatbot). However the caching, model saving, data filtering, and parameter variations were all added after the assignment was submitted so that one could see how different model variations would perform.
