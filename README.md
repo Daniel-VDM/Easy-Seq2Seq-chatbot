@@ -1,9 +1,8 @@
 # Seq2Seq-chatbot
 An implementation of a chatbot that uses a sequence to sequence (seq2seq) model which can be trained on any set of question-answer pairs. 
 
-[![license](https://img.shields.io/badge/License-Apache_2.0-brightgreen.svg)](https://github.com/philipperemy/keras-seq2seq-example/blob/master/LICENSE) [![dep0](https://img.shields.io/badge/Python-3.6%2B-brightgreen.svg)](https://www.python.org/downloads/) [![dep1](https://img.shields.io/badge/Tensorflow-1.2+-blue.svg)](https://www.tensorflow.org/) [![dep2](https://img.shields.io/badge/Keras-2.0+-blue.svg)](https://keras.io/) [![dep3](https://img.shields.io/badge/spaCy-2.0%2B-blue.svg)](https://spacy.io/models/#section-quickstart) [![dep4](https://img.shields.io/badge/nltk-3.4%2B-blue.svg)](https://www.nltk.org/install.html) 
+[![dep0](https://img.shields.io/badge/Python-3.6%2B-brightgreen.svg)](https://www.python.org/downloads/) [![dep1](https://img.shields.io/badge/Tensorflow-1.2+-blue.svg)](https://www.tensorflow.org/) [![dep2](https://img.shields.io/badge/Keras-2.0+-blue.svg)](https://keras.io/) [![dep3](https://img.shields.io/badge/spaCy-2.0%2B-blue.svg)](https://spacy.io/models/#section-quickstart) [![dep4](https://img.shields.io/badge/nltk-3.4%2B-blue.svg)](https://www.nltk.org/install.html) 
 
----
 **Indented Usage**: With this script, one could try out different data sets and model parameters to see how the resulting models/chatbots differ.
 
 **Script Summary**:
