@@ -65,7 +65,7 @@ The script supports vocab and vocab encoded data caching as those two things can
 Since the goal of the script is to try out various different parameters and datasets, the script can save and load models (vocab, LSTMs and all). The user can choose where to load and save the models. Note that any change to the chatbot object may mess up the saved model, however, there are backups (model weights and vocab pickle files) for each saved model that could be used to reconstruct the model. 
 
 ## User Guide
-**Dependencies:** Python 3.6+, Numpy, Keras, Tensorflow, nltk, spaCy. It is recommended to have a GPU and have Tensorflow use the GPU (requires a supported NVIDIA GPU). Also, it is recommended to have around 4 GB of system memory for relatively large models with a reasonable batch size. 
+**Dependencies:** Python 3.6+, Numpy, Keras, Tensorflow, nltk, spaCy. It is recommended to have Tensorflow work with a GPU since large models will take a considerable amount of time to train (this will require a supported NVIDIA GPU). Also, it is recommended to have around 4 GB of system memory for relatively large models with a reasonable batch size. 
 
 ### Data & Vocab JSON file spec
 The Data and Vocab file must be a `.json` file and **both** have the following attributes:
