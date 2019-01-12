@@ -24,9 +24,9 @@ The LSTMs required for the seq2seq model was implemented using [Keras](https://k
 
 * One can change the number of time steps in the encoder and decoder LSTMs as well as change the latent dimensions of said LSTMs. 
 
-* One can define a vocab size (used for the one-hot encoding) as well as the `.json` file used to create the vocab (file format and details are in the [section below](#data--vocab-file-details-and-spec)). 
+* One can define a vocab size (used for the one-hot encoding) as well as the JSON file used to create the vocab (file format and details are in the [section below](#data--vocab-file-details-and-spec)). 
 
-* One can define the `.json` file used to train the model (file format and details are in the [section below](#data--vocab-file-details-and-spec)).
+* One can define the JSON file used to train the model (file format and details are in the [section below](#data--vocab-file-details-and-spec)).
 
 * One can define the number of epochs used in training as well as the batch size used during training. Note that memory usage largely scales with batch size due to the one-hot encodings. 
 
@@ -58,7 +58,7 @@ The script filters the question-answer training data to get more useful q-and-a 
 
 **Vocab and Data Caching:**
 
-The script supports vocab and vocab encoded data caching as those two things can take a long time to generate (especially if NER is enabled). Every time a vocab is created, it is cached, and if the `.json` file for the vocab is the same as the `.json` file used to generate the cache file, the cache vocab is loaded. The vocab encoded data is cached every time it's generated and the cached file is loaded in a case similar to that of the vocab cache file. (Reference the code for details).
+The script supports vocab and vocab encoded data caching as those two things can take a long time to generate (especially if NER is enabled). Every time a vocab is created, it is cached, and if the JSON file for the vocab is the same as the JSON file used to generate the cache file, the cache vocab is loaded. The vocab encoded data is cached every time it's generated and the cached file is loaded in a case similar to that of the vocab cache file. (Reference the code for details).
 
 **Model Saving:**
 
@@ -68,7 +68,7 @@ Since the goal of the script is to try out various different parameters and data
 **Dependencies:** Python 3.6+, Numpy, Keras, Tensorflow, nltk, spaCy. It is recommended to have Tensorflow work with a GPU since large models will take a considerable amount of time to train (this will require a supported NVIDIA GPU). Also, it is recommended to have around 4 GB of system memory for relatively large models with a reasonable batch size. 
 
 ### Data & Vocab JSON file spec
-The Data and Vocab file must be a `.json` file and **both** have the following attributes:
+The Data and Vocab file must be a JSON file and **both** have the following attributes:
 
 * Attr: "data". For the data file this can be a list of question-answer pairs, i.e: `[...,["Did you change your hair?", "No."], ["Hi!", "Hello."],...]`. For the vocab file, this can be just a list of sentences *or* a list of question-answer pairs.
 
@@ -78,7 +78,7 @@ The Data and Vocab file must be a `.json` file and **both** have the following a
 
 * Attr: "signature". Mandatory for both. It is some sort of identifier that ties back to the original source of the data, i.e: file_name + last modified time of file_name.
 
-> Sample `.json` files can be found with the script ([`Cornell_Movie_Dialogs_Data.json`](Cornell_Movie_Dialogs_Data.json) & [`Small_Data.json`](Small_Data.json)). Furthermore, one could reference [`./training_data_scripts/Cornell-Data_json_creator.py`](training_data_scripts/Cornell-Data_json_creator.py) as a sample script that takes a `.csv` file and creates the desired `.json` file.
+> Sample JSON files can be found with the script ([`Cornell_Movie_Dialogs_Data.json`](Cornell_Movie_Dialogs_Data.json) & [`Small_Data.json`](Small_Data.json)). Furthermore, one could reference [`./training_data_scripts/Cornell-Data_json_creator.py`](training_data_scripts/Cornell-Data_json_creator.py) as a sample script that takes a CSV file and creates the desired JSON file.
 
 ### Script options
 The script has various options that are handled by an options parser. To look up the options and their quick descriptions use the `--help` option, i.e: use the command: `python chatbot.py --help`.
@@ -100,7 +100,7 @@ Options:
   -v VOCAB_SIZE, --vocab_size=VOCAB_SIZE
                         The size of the vocab of the Chatbot. Default = None
   -f VOCAB_FILE, --vocab_file=VOCAB_FILE
-                        The directory of the .json file that is used to define
+                        The directory of the JSON file that is used to define
                         the vocab. The 'data' attribute can be either
                         question-answer pairs or just strings/sentences.
                         Default = whatever the train_file is.
@@ -110,7 +110,7 @@ Options:
                         amount of complexity in encoding the training data.
   -M, --verbose         Toggles verbose on.
   -t TRAIN_FILE, --train_file=TRAIN_FILE
-                        The directory of the .json file that is used to train
+                        The directory of the JSON file that is used to train
                         the model. The 'data' attribute must be a list of
                         question-answer pairs.Default =
                         'Cornell_Movie_Dialogs_Data.json'
