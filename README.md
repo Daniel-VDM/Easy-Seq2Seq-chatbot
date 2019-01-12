@@ -15,7 +15,7 @@ The goal of the script was to provide an easier way to vary various parameters r
 The underlying model of the ChatBot is a sequence to sequence model which is explained in detail in the following paper: [Sequence to Sequence Learning with Neural Networks](https://arxiv.org/pdf/1409.3215.pdf). But at a very high level, it encodes a question (a 'chat' input from the user) using an encoder LSTM to form a thought vector to 'describe' the question as a single vector. Then, the decoder (also a LSTM) takes said thought vector as the initial input and generates a response/answer. The picture above is a good visualization of the model.
 
 **Implementation Details:**
-The LSTMs required for the seq2seq model was implemented using [Keras](https://keras.io/) for simplicity. Furthermore, said model uses one-hot encodings of sentences its inputs and outputs. The one hot encodings use a vocab of the most frequent words/tokens of a document. Also, name entity recognition can be used (toggled) in this script and if it is enabled, all questions and answers will effectively have their entities subbed out for their 'entity tokens' before they are one hot encoded. For example, the sentence: "She was born on September 1st, 1996" would effectively be "She was born on <DATE> <DATE> <DATE>" before it is one hot encoded. The NER used in this script is from the [spaCy NLP library](https://spacy.io/). Note that NER considerably increases the time it takes to "prepare" the training data. Lastly, letter casing is ignored in the training data so data strings/sentences are effectively converted to their lower case form (after NER is done). This is done to reduce the vocab size and training data variation. One could do some post-processing on a model's generated response to properly letter case the response (this is not implemented yet). 
+The LSTMs required for the seq2seq model was implemented using [Keras](https://keras.io/) for simplicity. Furthermore, said model uses one-hot encodings of sentences its inputs and outputs. The one hot encodings use a vocab of the most frequent words/tokens of a document. Also, name entity recognition can be used (toggled) in this script and if it is enabled, all questions and answers will effectively have their entities subbed out for their 'entity tokens' before they are one hot encoded. For example, the sentence: "She was born on September 1st, 1996" would effectively be "She was born on <DATE> <DATE> <DATE>" before it is one hot encoded. The NER used in this script is from the [spaCy library](https://spacy.io/). Note that NER considerably increases the time it takes to "prepare" the training data. Lastly, letter casing is ignored in the training data so data strings/sentences are effectively converted to their lower case form (after NER is done). This is done to reduce the vocab size and training data variation. One could do some post-processing on a model's generated response to properly letter case the response (this is not implemented yet). 
 
 ## Features
 **Veriable Model Parameter:**
@@ -42,9 +42,13 @@ The script has support for NER via the [spaCy library](https://spacy.io/). NER a
 
 Note that currently if NER is enabled, the generated responses/answers will have entity tags instead of actual entities, i.e: the chatbot would generate  "She was born on <DATE> <DATE> <DATE>" instead of the actual sentence mentioned above. One could do some post-processing on the generated response and substitute back appropriate entities (this is not implemented yet).
 
-**Data Caching:**
+**Vocab and Data Caching:**
+
+The script supports vocab and vocab encoded data caching as those two things can take a long time to generate (especially if NER is enabled). Evertime a vocab is created, it is cached, and if the `.json` file for the vocab is the same as the `.json` file used to generate the cache file, the cache vocab is loaded. The vocab encoded data is cached eveytime it's generated and the cached file is loaded in a case similar to that of the vocab cache file. (Reference the code for details).
 
 **Model Saving:**
+
+Since the goal of the script is to try out various different parameters and data ets, the script can save and load models (vocab, LSTMs and all).
 
 ## User Guide
 **Dependencies:**
