@@ -24,9 +24,9 @@ The LSTMs required for the seq2seq model was implemented using [Keras](https://k
 
 * One can change the number of time steps in the encoder and decoder LSTMs as well as change the latent dimensions of said LSTMs. 
 
-* One can define a vocab size (used for the one-hot encoding) as well as the JSON file used to create the vocab (file format and details are in the [section below](#data--vocab-file-details-and-spec)). 
+* One can define a vocab size (used for the one-hot encoding) as well as the JSON file used to create the vocab (file format and details are in the [section below](#data--vocab-json-file-spec)). 
 
-* One can define the JSON file used to train the model (file format and details are in the [section below](#data--vocab-file-details-and-spec)).
+* One can define the JSON file used to train the model (file format and details are in the [section below](#data--vocab-json-file-spec)).
 
 * One can define the number of epochs used in training as well as the batch size used during training. Note that memory usage largely scales with batch size due to the one-hot encodings. 
 
