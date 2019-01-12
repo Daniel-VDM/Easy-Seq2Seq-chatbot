@@ -38,11 +38,23 @@ A major advantage of this script is that it does not store all of the training d
 
 > The vocab encoding is as follows: It uses the vocab to create an encoded vector where entry `i` of said vocab encoding is the token id of `L[i]` (`L` is a list of tokens of a given sentence). So for example if a vocab is `{'<PADD>':0, ..., 'how':10, 'are':20, 'you':30, '?':31  ...}` and `L = ["how", "are", "you", "?"]` the resulting vocab encoding would be `[10, 20, 30, 31, 0, ..., 0]` (padded as needed). One can see how easy and efficient it would be to convert this vocab encoding to a one-hot encoding when a batch is needed for training.
 
-**Name Entity Recognition (NER)**:
+**Name Entity Recognition (NER):**
 
 The script has support for NER via the [spaCy library](https://spacy.io/). NER allows us to reduce the vocab size if certain entities appear a lot in the dataset. However more importantly it reduces the variation in the training data, which can result in a loss of granularity in the training data. For example, consider these two sentences: "She was born on September 1st, 1996" and "She was born on October 3rd, 1864". In a more abstract sense, the two sentences are essentially the same sentences as they both describe the birthdate of some girl. If we ignore the entity and treat these two sentences as one, we have less fitting to do for the seq2seq model (or more data to reinforce a correct model). 
 
 Note that currently if NER is enabled, the generated responses/answers will have entity tags instead of actual entities, i.e: the chatbot would generate  "She was born on <DATE> <DATE> <DATE>" instead of the actual sentence mentioned above. One could do some post-processing on the generated response and substitute back appropriate entities (this is not implemented yet).
+  
+**Data Filtering:**
+
+The script filters the question-answer training data to get more useful q-and-a pairs for the model. As is, the script has 3 different filter modes that can be chosen and they are:
+
+1) Only take Questions that have `N_in` (number of encoder recurrent steps) number of tokens and only take Answers that have `N_out` (number of decoder recurrent steps) number of tokens.
+
+2) All of filter 1 *and* Questions must have a `?` token.
+
+3) All of filter 2 *and* Answers must have a `?` token.
+
+> Filter 1 is so that all training data used fits the defined model. Filter 2 ensures that 'question' are indeed questions. Lastly, filter 3 encourages the model to respond with a question so that the conversation can carry on.
 
 **Vocab and Data Caching:**
 
@@ -53,7 +65,7 @@ The script supports vocab and vocab encoded data caching as those two things can
 Since the goal of the script is to try out various different parameters and datasets, the script can save and load models (vocab, LSTMs and all). The user can choose where to load and save the models. Note that any change to the chatbot object may mess up the saved model, however, there are backups (model weights and vocab pickle files) for each saved model that could be used to reconstruct the model. 
 
 ## User Guide
-**Dependencies:**
+**Dependencies:** Python 3.6+, Numpy, Keras, Tensorflow, nltk, spaCy. It is recommended to have a GPU and have Tensorflow use the GPU (required a supported NVIDIA GPU). Also, it is recommended to have around 4 GB of system memory for relatively large models with a reasonable batch size. 
 
 ### Data & Vocab file details and spec
 
