@@ -1,6 +1,7 @@
 # Seq2Seq-chatbot
 An implementation of a chatbot that uses a sequence to sequence (seq2seq) model which can be trained on any set of question-answer pairs. 
 
+[![license](https://img.shields.io/badge/License-Apache_2.0-brightgreen.svg)](https://github.com/philipperemy/keras-seq2seq-example/blob/master/LICENSE) [![dep0](https://img.shields.io/badge/Python-3.6%2B-brightgreen.svg)](https://www.python.org/downloads/) [![dep1](https://img.shields.io/badge/Tensorflow-1.2+-blue.svg)](https://www.tensorflow.org/) [![dep2](https://img.shields.io/badge/Keras-2.0+-blue.svg)](https://keras.io/) [![dep3](https://img.shields.io/badge/spaCy-2.0%2B-blue.svg)](https://spacy.io/models/#section-quickstart) [![dep4](https://img.shields.io/badge/nltk-3.4%2B-blue.svg)](https://www.nltk.org/install.html) 
 **Indented Usage**: With this script, one could try out different data sets and model parameters to see how the resulting models/chatbots differ.
 
 **Script Summary**:
@@ -38,17 +39,17 @@ A major advantage of this script is that it does not store all of the training d
 
 **Name Entity Recognition (NER)**:
 
-The script has support for NER via the [spaCy library](https://spacy.io/). NER allows us to reduce the vocab size if certain entities appear a lot in the dataset. However more importantly it reduces the variation in the training data, which can result in a loss in granularity of the training data. For example, consider these two sentences: "She was born on September 1st, 1996" and "She was born on October 3rd, 1864". In a more abstract sense, the two sentences are essentially the same sentences as they both describe the birthdate of some girl. If we ignore the entity and treat these two sentences as one, we have less fitting to do for the seq2seq model (or more data to reinforce a correct model). 
+The script has support for NER via the [spaCy library](https://spacy.io/). NER allows us to reduce the vocab size if certain entities appear a lot in the dataset. However more importantly it reduces the variation in the training data, which can result in a loss of granularity in the training data. For example, consider these two sentences: "She was born on September 1st, 1996" and "She was born on October 3rd, 1864". In a more abstract sense, the two sentences are essentially the same sentences as they both describe the birthdate of some girl. If we ignore the entity and treat these two sentences as one, we have less fitting to do for the seq2seq model (or more data to reinforce a correct model). 
 
 Note that currently if NER is enabled, the generated responses/answers will have entity tags instead of actual entities, i.e: the chatbot would generate  "She was born on <DATE> <DATE> <DATE>" instead of the actual sentence mentioned above. One could do some post-processing on the generated response and substitute back appropriate entities (this is not implemented yet).
 
 **Vocab and Data Caching:**
 
-The script supports vocab and vocab encoded data caching as those two things can take a long time to generate (especially if NER is enabled). Evertime a vocab is created, it is cached, and if the `.json` file for the vocab is the same as the `.json` file used to generate the cache file, the cache vocab is loaded. The vocab encoded data is cached eveytime it's generated and the cached file is loaded in a case similar to that of the vocab cache file. (Reference the code for details).
+The script supports vocab and vocab encoded data caching as those two things can take a long time to generate (especially if NER is enabled). Every time a vocab is created, it is cached, and if the `.json` file for the vocab is the same as the `.json` file used to generate the cache file, the cache vocab is loaded. The vocab encoded data is cached every time it's generated and the cached file is loaded in a case similar to that of the vocab cache file. (Reference the code for details).
 
 **Model Saving:**
 
-Since the goal of the script is to try out various different parameters and data ets, the script can save and load models (vocab, LSTMs and all).
+Since the goal of the script is to try out various different parameters and datasets, the script can save and load models (vocab, LSTMs and all). The user can choose where to load and save the models. Note that any change to the chatbot object may mess up the saved model, however, there are backups (model weights and vocab pickle files) for each saved model that could be used to reconstruct the model. 
 
 ## User Guide
 **Dependencies:**
