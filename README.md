@@ -145,7 +145,7 @@ If loading a model, one should get the following:
 ```
 ```
 
-## Results
+## Movie Script Results
 
 ## Credits
 The script was written by Daniel Van Der Maden as an Undergraduate Computer Science student at UC Berkeley.
