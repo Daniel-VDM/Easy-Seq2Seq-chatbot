@@ -70,13 +70,13 @@ Since the goal of the script is to try out various different parameters and data
 ### Data & Vocab JSON file spec
 The Data and Vocab file must be a JSON file and **both** have the following attributes:
 
-* Attr: "data". For the data file this can be a list of question-answer pairs, i.e: `[...,["Did you change your hair?", "No."], ["Hi!", "Hello."],...]`. For the vocab file, this can be just a list of sentences *or* a list of question-answer pairs.
+* Attribute: "data". For the data file this can be a list of question-answer pairs, i.e: `[...,["Did you change your hair?", "No."], ["Hi!", "Hello."],...]`. For the vocab file, this can be just a list of sentences *or* a list of question-answer pairs.
 
-* Attr: "questions". Optional for the vocab file but mandatory for the data file. This is simply the list of questions from the question-answer pairs (for convenience). 
+* Attribute: "questions". Optional for the vocab file but mandatory for the data file. This is simply the list of questions from the question-answer pairs (for convenience). 
 
-* Attr: "answers". Optional for the vocab file but mandatory for the data file. This is simply the list of answers from the question-answer pairs (for convenience). 
+* Attribute: "answers". Optional for the vocab file but mandatory for the data file. This is simply the list of answers from the question-answer pairs (for convenience). 
 
-* Attr: "signature". Mandatory for both. This is some sort of (string) identifier that ties back to the original source of the data, i.e: source_file_name + last modified time of source_file_name.
+* Attribute: "signature". Mandatory for both. This is some sort of (string) identifier that ties back to the original source of the data, i.e: source_file_name + last modified time of source_file_name.
 
 > Sample JSON files can be found with the script ([`Cornell_Movie_Dialogs_Data.json`](Cornell_Movie_Dialogs_Data.json) & [`Small_Data.json`](Small_Data.json)). Furthermore, one could reference [`./training_data_scripts/Cornell-Data_json_creator.py`](training_data_scripts/Cornell-Data_json_creator.py) as a sample script that takes a CSV file and creates the desired JSON file.
 
