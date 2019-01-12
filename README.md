@@ -17,7 +17,7 @@ The goal of the script was to provide an easier way to vary various parameters r
 The underlying model of the ChatBot is a sequence to sequence model which is explained in detail in the following paper: [Sequence to Sequence Learning with Neural Networks](https://arxiv.org/pdf/1409.3215.pdf). But at a very high level, it encodes a question (a 'chat' input from the user) using an encoder LSTM to form a thought vector to 'describe' the question as a single vector. Then, the decoder (also a LSTM) takes said thought vector as the initial input and generates a response/answer. The picture above is a good visualization of the model.
 
 **Implementation Details:**
-The LSTMs required for the seq2seq model was implemented using [Keras](https://keras.io/) for simplicity. Furthermore, said model uses one-hot encodings of sentences its inputs and outputs. The one hot encodings use a vocab of the most frequent words/tokens of a document. Also, name entity recognition can be used (toggled) in this script and if it is enabled, all questions and answers will effectively have their entities subbed out for their 'entity tokens' before they are one hot encoded. For example, the sentence: "She was born on September 1st, 1996" would effectively be "She was born on <DATE> <DATE> <DATE>" before it is one hot encoded. The NER used in this script is from the [spaCy library](https://spacy.io/). Note that NER considerably increases the time it takes to "prepare" the training data. Lastly, letter casing is ignored in the training data so data strings/sentences are effectively converted to their lower case form (after NER is done). This is done to reduce the vocab size and training data variation. One could do some post-processing on a model's generated response to properly capitalize the response (this is not implemented). 
+The LSTMs required for the seq2seq model was implemented using [Keras](https://keras.io/) for simplicity. Furthermore, said model uses one-hot encodings of sentences its inputs and outputs. The one hot encodings use a vocab of the most frequent words/tokens of a document. Also, name entity recognition can be used (toggled) in this script and if it is enabled, all questions and answers will effectively have their entities subbed out for their 'entity tokens' before they are one hot encoded. For example, the sentence: "She was born on September 1st, 1996" would effectively be "She was born on <DATE> <DATE> <DATE>" before it is one hot encoded. The NER used in this script is from the [spaCy library](https://spacy.io/). Note that NER considerably increases the time it takes to "prepare" the training data. Lastly, letter casing is ignored in the training data so data strings/sentences are effectively converted to their lower case form (after NER is done). This is done to reduce the vocab size and training data variation. One could do some post-processing on a model's generated response to properly capitalize the response (this is not implemented yet). 
 
 ## Features
 **Veriable Model Parameter:**
@@ -148,6 +148,22 @@ If loading a model, one should get the following: (if more than 1 model is saved
 ```
 
 ## Movie Script Results
+**Data info:**
+The 'large' model saved in this repo was trained on [Cornell's Movie Dialogs dataset](training_data_scripts/CornellMovieDialogs_Raw.tsv). Said dataset came as a `.csv` file with 5 columns: LineID, characterID, movieID, character name and text. When converting the `.csv` file to the JSON file for the script, the following filters were applied: First, it only considers rows where the text is 20 tokens or less. Next, for every row `i` that passes said first filter, the text of row `i` was a question and text of row `i+1` was the respective answer so long as the movieIDs were the same, characterIDs were different and LineIDs was consecutive.
+
+The 'small' model saved in this repo was trained on some handwritten [test data](training_data_scripts/dataset.txt). Each consecutive string in said dataset was a question-answer pair in the JSON file used for the vocab and training.
+
+**Training info:**
+The 'large' model parameters that yielded the best result were ... **TBD, still training**
+
+The 'small' model parameters that yeilded the best results were: `N_in = 10, N_out = 20, Latent_Dim = 128, Vocab_Size = None, Epoch = 500, Batch_Size = 32, Split = 0.35`. The model ended up with a held out loss of approximatly 0.05.
+
+**Sample Conversations:**
+
+*'Large' Model*
+
+*'Small' Model*
+
 
 ## Credits
 This project was written by Daniel Van Der Maden as an Undergraduate Computer Science student at UC Berkeley.
