@@ -4,7 +4,7 @@ An implementation of a chatbot that uses a sequence to sequence (seq2seq) model 
 **Indented Usage**: With this script, one could try out different data sets and model parameters to see how the resulting models/chatbots differ.
 
 **Script Summary**:
-The goal of the script was to provide an easier way to vary various parameters regarding the seq2seq model (such as encoder & decoder recurrent steps, latent dimensions, training epochs, etc..). Furthermore, the script uses a more memory friendly way of training the seq2seq model, which allows the user to train the model with large data sets of question-answer pairs. Also, the script has some caching implemented since "preparing" the training data takes a long time for large datasets. Lastly, the script can save models once it's trained, as well as load trained models to chat with.
+The goal of the script was to provide an easier way to vary various parameters regarding the seq2seq model (such as encoder & decoder recurrent steps, latent dimensions, training epochs, etc..). Furthermore, the script uses a more memory friendly way of training the seq2seq model, which allows the user to train models with large datasets of question-answer pairs. Also, the script has some caching implemented since "preparing" the training data takes a long time for large datasets. Lastly, the script can save models once it's trained, as well as load trained models to chat with.
 
 ## Model Explanation
 <p align="center">
@@ -20,7 +20,19 @@ The LSTMs required for the seq2seq model was implemented using [Keras](https://k
 ## Features
 **Veriable Model Parameter:**
 
+* One can change the number of time steps in the encoder and decoder LSTMs as well as change the latent dimensions of said LSTMs. 
+
+* One can define a vocab size (used for the one-hot encoding) as well as the `.json` file used to create the vocab (file format and details are in the [section below](#data--vocab-file-details-and-spec)). 
+
+* One can define the `.json` file used to train the model (file format and details are in the [section below](#data--vocab-file-details-and-spec)).
+
+* One can define the number of epochs used in training as well as the batch size used during training. Note that memory usage largely scales with batch size due to the one-hot encodings. 
+
+* Lastly, since the script uses held out data as its performance measure for the model during training, one can define the percentage of data that is held out for evaluation during training. Note that the held out data is randomly chosen and changes at every epoch.
+
 **Training Memory Efficiency:**
+
+A major advantage of this script
 
 **Data Caching:**
 
