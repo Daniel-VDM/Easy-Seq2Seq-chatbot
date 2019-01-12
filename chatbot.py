@@ -141,7 +141,7 @@ class ChatBot:
         Private method used in the constructor.
 
         Creates and caches a vocab from this instance's vocab file. Note that the
-        vocab file is expected to come as a .json file where the vocab data is
+        vocab file is expected to come as a JSON file where the vocab data is
         saved as attribute: 'vocab_data'. The vocab data is either a list of 
         question-answer pairs/tuples or a list of sentences/strings.
 
@@ -640,7 +640,7 @@ def get_options():
     opts.add_option('-v', '--vocab_size', dest='vocab_size', type=int, default=None,
                     help='The size of the vocab of the Chatbot. Default = None')
     opts.add_option('-f', '--vocab_file', dest='vocab_file', type=str, default=None,
-                    help="The directory of the .json file that is used to define the vocab. "
+                    help="The directory of the JSON file that is used to define the vocab. "
                          "The 'data' attribute can be either question-answer pairs or just strings/sentences. "
                          "Default = whatever the train_file is.")
     opts.add_option("-I", '--ignore_cache', action="store_true", dest="ignore_cached",
@@ -652,7 +652,7 @@ def get_options():
     opts.add_option("-M", '--verbose', action="store_true", dest="verbose",
                     help="Toggles verbose on.")
     opts.add_option('-t', '--train_file', dest='train_file', type=str, default="Cornell_Movie_Dialogs_Data.json",
-                    help="The directory of the .json file that is used to train the model. "
+                    help="The directory of the JSON file that is used to train the model. "
                          "The 'data' attribute must be a list of question-answer pairs."
                          "Default = 'Cornell_Movie_Dialogs_Data.json'")
     opts.add_option('-c', '--filter_mode', dest='filter_mode', type=int, default=0,
