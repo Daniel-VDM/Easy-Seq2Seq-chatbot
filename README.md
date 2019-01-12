@@ -76,7 +76,7 @@ The Data and Vocab file must be a JSON file and **both** have the following attr
 
 * Attr: "answers". Optional for the vocab file but mandatory for the data file. This is simply the list of answers from the question-answer pairs (for convenience). 
 
-* Attr: "signature". Mandatory for both. It is some sort of identifier that ties back to the original source of the data, i.e: file_name + last modified time of file_name.
+* Attr: "signature". Mandatory for both. This is some sort of (string) identifier that ties back to the original source of the data, i.e: source_file_name + last modified time of source_file_name.
 
 > Sample JSON files can be found with the script ([`Cornell_Movie_Dialogs_Data.json`](Cornell_Movie_Dialogs_Data.json) & [`Small_Data.json`](Small_Data.json)). Furthermore, one could reference [`./training_data_scripts/Cornell-Data_json_creator.py`](training_data_scripts/Cornell-Data_json_creator.py) as a sample script that takes a CSV file and creates the desired JSON file.
 
