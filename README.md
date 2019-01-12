@@ -78,7 +78,7 @@ The Data and Vocab file must be a `.json` file and **both** have the following a
 
 * Attr: "signature". Mandatory for both. It is some sort of identifier that ties back to the original source of the data, i.e: file_name + last modified time of file_name.
 
-> Sample `.json` files can be found with the script (`Cornell_Movie_Dialogs_Data.json` & `Small_Data.json`). Furthermore, one could reference [`./training_data_scripts/Cornell-Data_json_creator.py`](training_data_scripts/Cornell-Data_json_creator.py) as a sample script that takes a `.csv` file and creates the desired `.json` file.
+> Sample `.json` files can be found with the script ([`Cornell_Movie_Dialogs_Data.json`](Cornell_Movie_Dialogs_Data.json) & [`Small_Data.json`](Small_Data.json)). Furthermore, one could reference [`./training_data_scripts/Cornell-Data_json_creator.py`](training_data_scripts/Cornell-Data_json_creator.py) as a sample script that takes a `.csv` file and creates the desired `.json` file.
 
 ### Script options
 The script has various options that are handled by an options parser. To look up the options and their quick descriptions use the `--help` option, i.e: use the command: `python chatbot.py --help`.
