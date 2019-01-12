@@ -34,7 +34,7 @@ The LSTMs required for the seq2seq model was implemented using [Keras](https://k
 
 A major advantage of this script is that it does not store all of the training data as one-hot encoded vectors during training. Instead, it stores all of the training data in an intermediate "vocab encoding". The script only creates the one-hot encoding (from said vocab encoding) for a sentence/data point when it's part of a batch that is being trained. Hence why the batch size hugely influences the memory usage. Since an ideal batch size is small, the script doesn't hog a lot of memory (around 1-3 GB of RAM for most 'normal' models). 
 
-> The vocab encoding is as follows: It uses the vocab to create an encoded vector where entry `i` of said vocab encoding is the token id of `L[i]` (`L` = list of tokens of a given sentence). So for example if a vocab is `{<PADD>:0, ..., how: 10, are: 20, you: 30, ...}` and `L = ["how", "are", "you"]` the resulting vocab encoding would be `[10, 20, 30, 0, ..., 0]` (padded as needed). One can easily see how easy and efficient it would be to convert this vocab encoding to a one-hot encoding when a batch is needed for training.
+> The vocab encoding is as follows: It uses the vocab to create an encoded vector where entry `i` of said vocab encoding is the token id of `L[i]` (`L` is a list of tokens of a given sentence). So for example if a vocab is `{<PADD>:0, ..., how:10, are:20, you:30, ...}` and `L = ["how", "are", "you"]` the resulting vocab encoding would be `[10, 20, 30, 0, ..., 0]` (padded as needed). One can easily see how easy and efficient it would be to convert this vocab encoding to a one-hot encoding when a batch is needed for training.
 
 **Name Entity Recognition**:
 
