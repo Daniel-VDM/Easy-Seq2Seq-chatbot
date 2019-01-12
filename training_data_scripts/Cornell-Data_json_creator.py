@@ -62,8 +62,7 @@ if os.path.isfile("dataset.txt"):
 
 dump = {
     "signature": f"{file_name} (last_mod: {os.path.getmtime(file_name)})",
-    "question_answer_pairs": Q_A_pairs,
-    "vocab_data": Q_A_pairs,
+    "data": Q_A_pairs,
     "questions": Q,
     "answers": A
 }

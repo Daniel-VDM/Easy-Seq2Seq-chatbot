@@ -158,7 +158,7 @@ class ChatBot:
         ner_tokens = set()
         ner_label_tokens = set()
         ner_label_to_token_dict = {}
-        vocab_data = json.load(open(self.vocab_file))["vocab_data"]
+        vocab_data = json.load(open(self.vocab_file))["data"]
 
         def process_for_entities(nlp_entities):
             for entity in nlp_entities:
@@ -282,7 +282,6 @@ class ChatBot:
                        of tokens in SENTENCE.
         :return: The vocab encoding of the sentence as described above.
         """
-        sentence = sentence.strip()
         sentence_tokens = nltk.word_tokenize(sentence)
         length = length if length else len(sentence_tokens)
         vector = np.zeros(length, dtype=int)  # 0 = token id for '<PADD>'.
@@ -502,7 +501,7 @@ class ChatBot:
         Trains the chatbot's encoder and decoder LSTMs (= the Seq2Seq model).
 
         Note that DATA_FILE is expected to come as a json file where said
-        file is has a list of question-answer pairs saved on row: 'question_answer_pairs'.
+        file is has a list of question-answer pairs saved on row: 'data'.
             Said list has the following form:
                 [...,["Did you change your hair?", "No."], ["Hi!", "Hello."],...]
 
@@ -533,7 +532,7 @@ class ChatBot:
         if not self.ignore_cache and self.has_valid_vocab_encodings():
             print("[!] Using cached training data encodings.")
         else:
-            data_pairs = json.load(open(self.train_data_file))["question_answer_pairs"]
+            data_pairs = json.load(open(self.train_data_file))["data"]
             self._create_and_cache_vocab_encoding(training_data_pairs=data_pairs, verbose=verbose)
 
         print(f"-==Training on {len(self._v_encoded_y)} Question-Answer pairs==-")
@@ -636,13 +635,14 @@ def get_options():
                     help="The number of time steps for the encoder. Default = 10.")
     opts.add_option('-o', '--N_out', dest='N_out', type=int, default=20,
                     help="The number of time setps for the decoder. Default = 20.")
+    opts.add_option('-l', '--latent_dim', dest='latent_dim', type=int, default=128,
+                    help="The dimensionality of the Encoder and Decoder's LSTM. Default = 128.")
     opts.add_option('-v', '--vocab_size', dest='vocab_size', type=int, default=None,
                     help='The size of the vocab of the Chatbot. Default = None')
-    opts.add_option('-f', '--vocab_file', dest='vocab_file', type=str, default="Cornell_Movie_Dialogs_Data.json",
-                    help="The directory of the file that is used to define the vocab. "
-                         "This file must be a json file that contains a list of question-answer"
-                         "pairs/lists. Reference the included/default file for details."
-                         "Default = 'Cornell_Movie_Dialogs_Data.json'")
+    opts.add_option('-f', '--vocab_file', dest='vocab_file', type=str, default=None,
+                    help="The directory of the .json file that is used to define the vocab. "
+                         "The 'data' can be either question-answer pairs or just strings/sentences. "
+                         "Default = whatever the train_file is.")
     opts.add_option("-I", '--ignore_cache', action="store_true", dest="ignore_cached",
                     help="Forces the script to ignore the cached files.")
     opts.add_option("-N", '--NER_enabled', action="store_true", dest="NER_enabled",
@@ -652,9 +652,8 @@ def get_options():
     opts.add_option("-M", '--verbose', action="store_true", dest="verbose",
                     help="Toggles verbose on.")
     opts.add_option('-t', '--train_file', dest='train_file', type=str, default="Cornell_Movie_Dialogs_Data.json",
-                    help="The directory of the file that is used to train the model. "
-                         "This file must be a json file that contains a list of question-answer"
-                         "pairs/lists. Reference the included/default file for details."
+                    help="The directory of the .json file that is used to train the model. "
+                         "The 'data' must be a list of question-answer pairs."
                          "Default = 'Cornell_Movie_Dialogs_Data.json'")
     opts.add_option('-c', '--filter_mode', dest='filter_mode', type=int, default=0,
                     help="An integer that dictates the filter imposed of the data. MODES: {0, 1, 2}. "
@@ -666,15 +665,16 @@ def get_options():
                     help="The number of epochs for training. Default = 100.")
     opts.add_option('-b', '--batch_size', dest='batch_size', type=int, default=32,
                     help="The batch size for training. Default = 32.")
-    opts.add_option('-l', '--latent_dim', dest='latent_dim', type=int, default=128,
-                    help="The dimensionality of the Encoder and Decoder's LSTM. Default = 128.")
     opts.add_option('-s', '--split', dest='split', type=float, default=0.35,
                     help="The percentage (val between 0 - 1) of data held out for validation. "
                          "Default = 0.35")
     opts.add_option('-m', '--saved_models_dir', dest='saved_models_dir', type=str, default="saved_models",
                     help="The directory for all of the saved (trained) models. "
                          "Default = 'saved_models'")
-    return opts.parse_args()[0]
+    options = opts.parse_args()[0]
+    if options.vocab_file is None:
+        options['vocab_file'] = options.train_file
+    return options
 
 
 def get_saved_model(directory):
