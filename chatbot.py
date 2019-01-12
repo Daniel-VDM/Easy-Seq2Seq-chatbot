@@ -142,8 +142,8 @@ class ChatBot:
 
         Creates and caches a vocab from this instance's vocab file. Note that the
         vocab file is expected to come as a .json file where the vocab data is
-        saved on row: 'vocab_data'. The vocab data is either a list of question-answer
-        pairs/tuples or a list of sentences/strings.
+        saved as attribute: 'vocab_data'. The vocab data is either a list of 
+        question-answer pairs/tuples or a list of sentences/strings.
 
         The created vocab uses the most frequent tokens first when truncating the
         vocab to fit the vocab size.
@@ -501,7 +501,7 @@ class ChatBot:
         Trains the chatbot's encoder and decoder LSTMs (= the Seq2Seq model).
 
         Note that DATA_FILE is expected to come as a json file where said
-        file is has a list of question-answer pairs saved on row: 'data'.
+        file is has a list of question-answer pairs saved on attribute: 'data'.
             Said list has the following form:
                 [...,["Did you change your hair?", "No."], ["Hi!", "Hello."],...]
 
@@ -641,19 +641,19 @@ def get_options():
                     help='The size of the vocab of the Chatbot. Default = None')
     opts.add_option('-f', '--vocab_file', dest='vocab_file', type=str, default=None,
                     help="The directory of the .json file that is used to define the vocab. "
-                         "The 'data' can be either question-answer pairs or just strings/sentences. "
+                         "The 'data' attribute can be either question-answer pairs or just strings/sentences. "
                          "Default = whatever the train_file is.")
     opts.add_option("-I", '--ignore_cache', action="store_true", dest="ignore_cached",
                     help="Forces the script to ignore the cached files.")
-    opts.add_option("-N", '--NER_enabled', action="store_true", dest="NER_enabled",
-                    help="Toggles the use of Name Entity Recognition as part of the chatbot model. "
-                         "Note that NER adds a considerable amount of complexity in encoding"
+    opts.add_option("-N", '--NER_disable', action="store_true", dest="NER_disable",
+                    help="Turns off Name Entity Recognition as part of the chatbot model. "
+                         "Note that NER adds a considerable amount of complexity in encoding "
                          "the training data.")
     opts.add_option("-M", '--verbose', action="store_true", dest="verbose",
                     help="Toggles verbose on.")
     opts.add_option('-t', '--train_file', dest='train_file', type=str, default="Cornell_Movie_Dialogs_Data.json",
                     help="The directory of the .json file that is used to train the model. "
-                         "The 'data' must be a list of question-answer pairs."
+                         "The 'data' attribute must be a list of question-answer pairs."
                          "Default = 'Cornell_Movie_Dialogs_Data.json'")
     opts.add_option('-c', '--filter_mode', dest='filter_mode', type=int, default=0,
                     help="An integer that dictates the filter imposed of the data. MODES: {0, 1, 2}. "
@@ -666,14 +666,14 @@ def get_options():
     opts.add_option('-b', '--batch_size', dest='batch_size', type=int, default=32,
                     help="The batch size for training. Default = 32.")
     opts.add_option('-s', '--split', dest='split', type=float, default=0.35,
-                    help="The percentage (val between 0 - 1) of data held out for validation. "
+                    help="The percentage (float between 0 - 1) of data held out for validation. "
                          "Default = 0.35")
     opts.add_option('-m', '--saved_models_dir', dest='saved_models_dir', type=str, default="saved_models",
                     help="The directory for all of the saved (trained) models. "
                          "Default = 'saved_models'")
     options = opts.parse_args()[0]
     if options.vocab_file is None:
-        options['vocab_file'] = options.train_file
+        options.vocab_file = options.train_file
     return options
 
 
@@ -726,7 +726,7 @@ if __name__ == "__main__":
             new_model_name = input()
 
         chat_bot = ChatBot(opts.N_in, opts.N_out, opts.vocab_size, opts.vocab_file,
-                           opts.ignore_cached, opts.NER_enabled)
+                           opts.ignore_cached, not opts.NER_disable)
         chat_bot.train(opts.train_file, opts.filter_mode, opts.latent_dim, opts.epoch,
                        opts.batch_size, opts.split, opts.verbose)
 
