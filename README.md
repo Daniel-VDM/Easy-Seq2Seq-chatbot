@@ -152,4 +152,4 @@ If loading a model, one should get the following: (if more than 1 model is saved
 ## Credits
 The script was written by Daniel Van Der Maden as an Undergraduate Computer Science student at UC Berkeley.
 
-This script originally started off as a project assignment for [David Bamman's](http://people.ischool.berkeley.edu/~dbamman/) Natural Language Processing Course (Info 159/259) at UC Berkeley (with the goal of just creating a seq2seq chatbot). However the caching, model saving, data filtering, and parameter variations were all added after the assignment was submitted so that one could see how different model variations would perform.
+This script originally started off as a project assignment for [David Bamman's](http://people.ischool.berkeley.edu/~dbamman/) Natural Language Processing Course (Info 159/259 - Fa18) at UC Berkeley (with the goal of just creating a seq2seq chatbot). However the caching, model saving, data filtering, and parameter variations were all added at a later time so that one could see how different model variations would perform.
