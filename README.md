@@ -83,7 +83,7 @@ The Data and Vocab file must be a `.json` file and **both** have the following a
 ### Script options
 The script has various options that are handled by an options parser. To look up the options and their quick descriptions use the `--help` option, i.e: use the command: `python chatbot.py --help`.
 
-Here is said help command print for reference:
+Here is the help message for reference:
 ```
 Usage: chatbot.py [options]
 
