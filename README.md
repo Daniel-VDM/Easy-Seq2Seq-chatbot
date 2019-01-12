@@ -139,11 +139,11 @@ One could run the script with the following command:
 
 `python chatbot.py --N_in=10 --N_out=20 --latent_dim=128 --vocab_size=10000 --train_file=Small_Data.json --filter_mode=1 --epoch=500 --batch_size=64 --split=0.35 --verbose`
 
-If training, one should get the following: (if the cache is invalid or it's the first time running the script)
+When training, one should get something similar to the following: (if cached files are invalid)
 ```
 ```
 
-If loading a model, one should get the following: (if more than 1 model is saved)
+When loading a model, one should get something similar to the following: (if more than 1 model is saved)
 ```
 ```
 
