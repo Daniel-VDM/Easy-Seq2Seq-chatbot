@@ -24,9 +24,9 @@ The LSTMs required for the seq2seq model was implemented using [Keras](https://k
 
 * One can change the number of time steps in the encoder and decoder LSTMs as well as change the latent dimensions of said LSTMs. 
 
-* One can define a vocab size (used for the one-hot encoding) as well as the JSON file used to create the vocab (file format and details are in the [section below](#data--vocab-file-details-and-spec)). 
+* One can define a vocab size (used for the one-hot encoding) as well as the JSON file used to create the vocab (file format and details are in the [section below](#data--vocab-json-file-spec)). 
 
-* One can define the JSON file used to train the model (file format and details are in the [section below](#data--vocab-file-details-and-spec)).
+* One can define the JSON file used to train the model (file format and details are in the [section below](#data--vocab-json-file-spec)).
 
 * One can define the number of epochs used in training as well as the batch size used during training. Note that memory usage largely scales with batch size due to the one-hot encodings. 
 
@@ -48,7 +48,7 @@ Note that currently if NER is enabled, the generated responses/answers will have
 
 The script filters the question-answer training data to get more useful q-and-a pairs for the model. As is, the script has 3 different filter modes that can be chosen and they are:
 
-1) Only take Questions that have `N_in` (number of encoder recurrent steps) number of tokens and only take Answers that have `N_out` (number of decoder recurrent steps) number of tokens.
+1) Only take Questions that have `n_in` (number of encoder recurrent steps) number of tokens and only take Answers that have `n_out` (number of decoder recurrent steps) number of tokens.
 
 2) All of filter 1 *and* Questions must have a `?` token.
 
@@ -70,13 +70,13 @@ Since the goal of the script is to try out various different parameters and data
 ### Data & Vocab JSON file spec
 The Data and Vocab file must be a JSON file and **both** have the following attributes:
 
-* Attr: "data". For the data file this can be a list of question-answer pairs, i.e: `[...,["Did you change your hair?", "No."], ["Hi!", "Hello."],...]`. For the vocab file, this can be just a list of sentences *or* a list of question-answer pairs.
+* Attribute: "data". For the data file this can be a list of question-answer pairs, i.e: `[...,["Did you change your hair?", "No."], ["Hi!", "Hello."],...]`. For the vocab file, this can be just a list of sentences *or* a list of question-answer pairs.
 
-* Attr: "questions". Optional for the vocab file but mandatory for the data file. This is simply the list of questions from the question-answer pairs (for convenience). 
+* Attribute: "questions". Optional for the vocab file but mandatory for the data file. This is simply the list of questions from the question-answer pairs (for convenience). 
 
-* Attr: "answers". Optional for the vocab file but mandatory for the data file. This is simply the list of answers from the question-answer pairs (for convenience). 
+* Attribute: "answers". Optional for the vocab file but mandatory for the data file. This is simply the list of answers from the question-answer pairs (for convenience). 
 
-* Attr: "signature". Mandatory for both. It is some sort of identifier that ties back to the original source of the data, i.e: file_name + last modified time of file_name.
+* Attribute: "signature". Mandatory for both. This is some sort of (string) identifier that ties back to the original source of the data, i.e: source_file_name + last modified time of source_file_name.
 
 > Sample JSON files can be found with the script ([`Cornell_Movie_Dialogs_Data.json`](Cornell_Movie_Dialogs_Data.json) & [`Small_Data.json`](Small_Data.json)). Furthermore, one could reference [`./training_data_scripts/Cornell-Data_json_creator.py`](training_data_scripts/Cornell-Data_json_creator.py) as a sample script that takes a CSV file and creates the desired JSON file.
 
@@ -89,9 +89,9 @@ Usage: chatbot.py [options]
 
 Options:
   -h, --help            show this help message and exit
-  -i N_IN, --N_in=N_IN  The number of time steps for the encoder. Default =
+  -i N_IN, --n_in=N_IN  The number of time steps for the encoder. Default =
                         10.
-  -o N_OUT, --N_out=N_OUT
+  -o N_OUT, --n_out=N_OUT
                         The number of time setps for the decoder. Default =
                         20.
   -l LATENT_DIM, --latent_dim=LATENT_DIM
@@ -117,8 +117,8 @@ Options:
   -c FILTER_MODE, --filter_mode=FILTER_MODE
                         An integer that dictates the filter imposed of the
                         data. MODES: {0, 1, 2}. Mode 0: Only take Questions
-                        that have N_in number of tokens and only take Answers
-                        that have N_out number of tokens. Mode 1: All of Mode
+                        that have n_in number of tokens and only take Answers
+                        that have n_out number of tokens. Mode 1: All of Mode
                         0 AND Questions must have a '?' token. Mode 2: All of
                         Mode 0 AND Question & Answer must have a '?' token.
                         Default = 0
@@ -137,20 +137,20 @@ Options:
 ## Sample Execution
 One could run the script with the following command: 
 
-`python chatbot.py --N_in=10 --N_out=20 --latent_dim=128 --vocab_size=10000 --train_file=Small_Data.json --filter_mode=1 --epoch=500 --batch_size=64 --split=0.35 --verbose`
+`python chatbot.py --n_in=10 --n_out=20 --latent_dim=128 --vocab_size=10000 --train_file=Small_Data.json --filter_mode=1 --epoch=500 --batch_size=64 --split=0.35 --verbose`
 
-If training, one should get the following: (if the cache is invalid or it's the first time running the script)
+When training, one should get something similar to the following: (if cached files are invalid)
 ```
 ```
 
-If loading a model, one should get the following: (if more than 1 model is saved)
+When loading a model, one should get something similar to the following: (if more than 1 model is saved)
 ```
 ```
 
 ## Movie Script Results
 **Data info:**
 
-The 'large' model saved in this repo was trained on [Cornell's Movie Dialogs dataset](training_data_scripts/CornellMovieDialogs_Raw.tsv). Said dataset came as a `.csv` file with 5 columns: LineID, characterID, movieID, character name and text. When converting the `.csv` file to the JSON file for the script, the following filters were applied: First, it only considers rows where the text is 20 tokens or less. Next, for every row `i` that passes said first filter, the text of row `i` was a question and text of row `i+1` was the respective answer so long as the movieIDs were the same, characterIDs were different and LineIDs was consecutive.
+The 'large' model saved in this repo was trained on [Cornell's Movie Dialogs dataset](training_data_scripts/CornellMovieDialogs_Raw.tsv). Said dataset came as a CSV file with 5 columns: LineID, characterID, movieID, character name and text. When converting the CSV file to the JSON file for the script, the following filters were applied: First, it only considers rows where the text is 20 tokens or less. Next, for every row `i` that passes said first filter, the text of row `i` was a question and text of row `i+1` was the respective answer so long as the movieIDs were the same, characterIDs were different and LineIDs was consecutive.
 
 The 'small' model saved in this repo was trained on some handwritten [test data](training_data_scripts/dataset.txt). Each consecutive string in said dataset was a question-answer pair in the JSON file used for the vocab and training.
 
@@ -158,7 +158,7 @@ The 'small' model saved in this repo was trained on some handwritten [test data]
 
 The 'large' model parameters that yielded the best result were ... **TBD, still training**
 
-The 'small' model parameters that yeilded the best results were: `N_in = 10, N_out = 20, Latent_Dim = 128, Vocab_Size = None, Epoch = 500, Batch_Size = 32, Split = 0.35`. The model ended up with a held out loss of approximatly 0.05.
+The 'small' model parameters that yeilded the best results were: `n_in = 10, n_out = 20, Latent_Dim = 128, Vocab_Size = None, Epoch = 500, Batch_Size = 32, Split = 0.35`. The model ended up with a held out loss of approximatly 0.05.
 
 **Sample Conversations:**
 

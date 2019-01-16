@@ -69,7 +69,7 @@ class ChatBot:
         self._trained_QA_pairs = []
 
     def __repr__(self):
-        return f"<ChatBot Instance: Vocab Size={self.vocab_size}, N_in={self.n_in}, N_out={self.n_out}," \
+        return f"<ChatBot Instance: Vocab Size={self.vocab_size}, n_in={self.n_in}, n_out={self.n_out}," \
             f" Vocab File={self.vocab_file_sig}, NER={self.ner_enabled}," \
             f" Training File={self.train_data_file_sig}, Filter Mode={self.train_data_filter_mode}>"
 
@@ -507,8 +507,8 @@ class ChatBot:
                 [...,["Did you change your hair?", "No."], ["Hi!", "Hello."],...]
 
         Filter Modes:
-            0) Only take Questions that have N_in number of tokens and only take
-            Answers that have N_out number of tokens.
+            0) Only take Questions that have n_in number of tokens and only take
+            Answers that have n_out number of tokens.
             1) Mode 0 AND Question must have a '?' token.
             2) Mode 0 AND Question & Answer must have a '?' token.
 
@@ -641,9 +641,9 @@ class ChatBot:
 
 def get_options():
     opts = OptionParser()
-    opts.add_option('-i', '--N_in', dest='N_in', type=int, default=10,
+    opts.add_option('-i', '--n_in', dest='n_in', type=int, default=10,
                     help="The number of time steps for the encoder. Default = 10.")
-    opts.add_option('-o', '--N_out', dest='N_out', type=int, default=20,
+    opts.add_option('-o', '--n_out', dest='n_out', type=int, default=20,
                     help="The number of time setps for the decoder. Default = 20.")
     opts.add_option('-l', '--latent_dim', dest='latent_dim', type=int, default=128,
                     help="The dimensionality of the Encoder and Decoder's LSTM. Default = 128.")
@@ -668,7 +668,7 @@ def get_options():
     opts.add_option('-c', '--filter_mode', dest='filter_mode', type=int, default=0,
                     help="An integer that dictates the filter imposed of the data. MODES: {0, 1, 2}. "
                          "Mode 0: Only take Questions that have N_in number of tokens and only take Answers "
-                         "that have N_out number of tokens. Mode 1: All of Mode 0 AND Questions must have a '?' token. "
+                         "that have n_out number of tokens. Mode 1: All of Mode 0 AND Questions must have a '?' token. "
                          "Mode 2: All of Mode 0 AND Question & Answer must have a '?' token. "
                          "Default = 0")
     opts.add_option('-e', '--epoch', dest='epoch', type=int, default=500,
@@ -734,7 +734,7 @@ if __name__ == "__main__":
             sys.stdout.flush()
             new_model_name = input()
 
-        chat_bot = ChatBot(opts.N_in, opts.N_out, opts.vocab_size, opts.vocab_file,
+        chat_bot = ChatBot(opts.n_in, opts.n_out, opts.vocab_size, opts.vocab_file,
                            opts.ignore_cached, not opts.NER_disable)
         chat_bot.train(opts.train_file, opts.filter_mode, opts.latent_dim, opts.epoch,
                        opts.batch_size, opts.split, opts.verbose)
