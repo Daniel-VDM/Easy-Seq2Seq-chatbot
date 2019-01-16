@@ -69,9 +69,9 @@ class ChatBot:
         self._trained_QA_pairs = []
 
     def __repr__(self):
-        return f"<ChatBot Object: Vocab Size={self.vocab_size}, N_in={self.n_in}, N_out={self.n_out}," \
+        return f"<ChatBot Instance: Vocab Size={self.vocab_size}, N_in={self.n_in}, N_out={self.n_out}," \
             f" Vocab File={self.vocab_file_sig}, NER={self.ner_enabled}," \
-            f" Training Data={self.train_data_file_sig}, Filter Mode={self.train_data_filter_mode}>"
+            f" Training File={self.train_data_file_sig}, Filter Mode={self.train_data_filter_mode}>"
 
     def __bool__(self):
         return self.encoder is not None and self.decoder is not None
@@ -230,12 +230,11 @@ class ChatBot:
         self.vocab_data_dict = dump
         return dump
 
-    def define_models(self, latent_dim, verbose):
+    def define_models(self, latent_dim):
         """
-        Define the encoder and decoder models for this object.
+        Define the encoder and decoder models for this instance.
 
         :param latent_dim: The dimensionality of the Encoder and Decoder's LSTM.
-        :param verbose: Print model summary if this is truthy.
         """
         assert len(self.token_to_id_dict) == len(self.id_to_token_dict)
 
@@ -262,9 +261,6 @@ class ChatBot:
         self.decoder = Model([decoder_inputs] + decoder_states_inputs, [decoder_outputs] + decoder_states)
 
         self.model.compile(optimizer='adam', loss='categorical_crossentropy')
-
-        if verbose:
-            print(self.model.summary())
 
         return True
 
@@ -429,8 +425,8 @@ class ChatBot:
         Check if the current instance has vocab encodings that uses
         this instance's vocab.
 
-        An encoding is valid if this object's vocab was used for this
-        object's encodings.
+        An encoding is valid if this instance's vocab was used for this
+        instance's encodings.
 
         The validation uses an idea similar to the bloom filter.
         The 'hash' portion of this bloom filter idea is solely
@@ -469,7 +465,7 @@ class ChatBot:
         Private method to load the encoded training data from cache.
 
         This does not load the cache file if the signature or
-        filter does not match this object's data file or filter
+        filter does not match this instance's data file or filter
         setting (respectively).
         """
         if not self.ignore_cache and os.path.isfile("cache/x1.pickle") \
@@ -499,6 +495,11 @@ class ChatBot:
     def train(self, data_file, filter_mode, latent_dim, epoch, batch_size, split_pct, verbose):
         """
         Trains the chatbot's encoder and decoder LSTMs (= the Seq2Seq model).
+
+        Note that this method will define a new model for this instance if it doesn't
+        have one or if the latent dimension do not match.
+        Otherwise it will 'keep training' the model for this instance.
+
 
         Note that DATA_FILE is expected to come as a json file where said
         file is has a list of question-answer pairs saved on attribute: 'data'.
@@ -537,7 +538,16 @@ class ChatBot:
 
         print(f"-==Training on {len(self._v_encoded_y)} Question-Answer pairs==-")
 
-        self.define_models(latent_dim, verbose=verbose)
+        if self.model is None or self.decoder is None or self.encoder is None \
+                or self.model.layers.get_output_at(0).get_shape()[1] != latent_dim:
+            # TODO: test the latent dim checker.
+            self.define_models(latent_dim)
+            if verbose:
+                print(self.model.summary())
+                print("Defined new model before training.")
+        elif verbose:
+            print(self.model.summary())
+            print("[!] Training a pre-defined (and possibly pre-trained) model.")
 
         for ep in range(epoch):
             for X_1, X_2, Y, batch_counter in self.batch_generator(batch_size=batch_size):
@@ -610,7 +620,7 @@ class ChatBot:
 
     def save(self, directory):
         """
-        :param directory: The directory of where this object is going to be saved.
+        :param directory: The directory of where this instance is going to be saved.
         """
         if not os.path.exists(directory):
             os.mkdir(directory)
@@ -698,7 +708,6 @@ def get_saved_model(directory):
 
 if __name__ == "__main__":
     # TODO: IMPLEMENTED AND TEST DECODER NER FEATURES.
-    # TODO: First Time installer...
     # TODO: publish README...
     opts = get_options()
     if not os.path.exists(opts.saved_models_dir):
