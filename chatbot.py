@@ -19,7 +19,7 @@ NER_NLP = spacy.load('en')
 
 class ChatBot:
 
-    def __init__(self, n_in, n_out, vocab_size, vocab_file, ignore_cache, ner_enabled):
+    def __init__(self, n_in, n_out, vocab_size, vocab_file, ignore_cache, ner_enabled, verbose):
         if not os.path.exists("cache"):
             os.makedirs("cache")
 
@@ -48,13 +48,16 @@ class ChatBot:
                 if self.ner_enabled and ("NER_tokens" not in self.vocab_data_dict.keys()
                                          or "NER_label_to_token_dict" not in self.vocab_data_dict.keys()):
                     raise ValueError("Cached vocab does not contain NER data.")
-                print("[!] Using cached vocab.")
+                if verbose:
+                    print("[!] Using cached vocab.")
             except Exception as e:
-                print(f"Exception encountered when reading vocab data: {type(e).__name__}, {e}")
-                self.vocab_data_dict = self._create_and_cache_vocab(vocab_size)
+                if verbose:
+                    print(f"Exception encountered when reading vocab data: {type(e).__name__}, {e}")
+                self.vocab_data_dict = self._create_and_cache_vocab(vocab_size, verbose=verbose)
         else:
-            print("No cached vocab file found.")
-            self.vocab_data_dict = self._create_and_cache_vocab(vocab_size)
+            if verbose:
+                print("No cached vocab file found.")
+            self.vocab_data_dict = self._create_and_cache_vocab(vocab_size, verbose=verbose)
         self.token_to_id_dict = self.vocab_data_dict["token_to_id"]
         self.id_to_token_dict = self.vocab_data_dict["id_to_token"]
         self.vocab_size = len(self.token_to_id_dict) if vocab_size is None else vocab_size
@@ -136,7 +139,7 @@ class ChatBot:
         X_1v, X_2v, Y_v = np.array(X_1v), np.array(X_2v), np.array(Y_v)
         return X_1t, X_2t, Y_t, X_1v, X_2v, Y_v
 
-    def _create_and_cache_vocab(self, vocab_size):
+    def _create_and_cache_vocab(self, vocab_size, verbose):
         """
         Private method used in the constructor.
 
@@ -183,26 +186,29 @@ class ChatBot:
         def progress_message():
             nonlocal count
             count += 1
-            sys.stdout.write(f"\rCreating Vocab, parsed {count}/{len(vocab_data)} lines of vocab data.")
+            sys.stdout.write(f"\rParsed {count}/{len(vocab_data)} lines of vocab data.")
             sys.stdout.flush()
 
         if len(vocab_data) == 0:
             raise ValueError(f"{self.vocab_file} contains no data.")
 
-        first_vocab_el = vocab_data[0]
+        print(f">> Creating Vocab from {len(vocab_data)} lines of data <<")
 
+        first_vocab_el = vocab_data[0]
         if type(first_vocab_el) == str:
             for line in vocab_data:
                 if self.ner_enabled:
                     process_for_entities(NER_NLP(line).ents)
                 process_for_freq(nltk.word_tokenize(line))
-                progress_message()
+                if verbose:
+                    progress_message()
         elif (type(first_vocab_el) == list or type(first_vocab_el) == tuple) and len(first_vocab_el) == 2:
             for question, answer in vocab_data:
                 if self.ner_enabled:
                     process_for_entities(itertools.chain(NER_NLP(question).ents, NER_NLP(answer).ents))
                 process_for_freq(itertools.chain(nltk.word_tokenize(question), nltk.word_tokenize(answer)))
-                progress_message()
+                if verbose:
+                    progress_message()
         else:
             raise ValueError(f"Vocab data: '{vocab_data}' is not supported.")
 
@@ -226,8 +232,9 @@ class ChatBot:
                     "token_to_id": {c: i for i, c in enumerate(vocab)},
                     "id_to_token": {i: c for i, c in enumerate(vocab)}}
         pickle.dump(dump, open("cache/vocab.pickle", 'wb'))
-        print(f"\nCached vocab file. Vocab size = {vocab_size}, Vocab Data = {self.vocab_file}")
         self.vocab_data_dict = dump
+        if verbose:
+            print(f"\nCached vocab file. Vocab size = {vocab_size}, Vocab Data = {self.vocab_file}")
         return dump
 
     def define_models(self, latent_dim):
@@ -316,7 +323,7 @@ class ChatBot:
                     encoding[i, j, tok_id] = 1
             return encoding
 
-    def _create_and_cache_vocab_encoding(self, training_data_pairs, verbose=0):
+    def _create_and_cache_vocab_encoding(self, training_data_pairs, verbose):
         """
         Private method used in the 'train' & 'batch_generator' methods of this class.
 
@@ -337,7 +344,7 @@ class ChatBot:
         encoded_x1, encoded_x2, encoded_y = [], [], []
         trained_QA_pairs = []
 
-        print("-==Vocab Encoding Training Data==-")
+        print(">> Vocab Encoding Training Data <<")
         for i, (q, a) in enumerate(training_data_pairs):
             if is_valid_data(q, a):
                 q_vec = self.v_encode(q, self.n_in)
@@ -352,7 +359,6 @@ class ChatBot:
             if verbose:
                 sys.stdout.write(f"\rProcessed {i+1}/{len(training_data_pairs)} Question-Answer Pairs.")
                 sys.stdout.flush()
-        print("")
 
         self._v_encoded_x1, self._v_encoded_x2, self._v_encoded_y = encoded_x1, encoded_x2, encoded_y
         self._trained_QA_pairs = trained_QA_pairs
@@ -365,8 +371,8 @@ class ChatBot:
                      "data": encoded_y}, open("cache/y.pickle", 'wb'))
         pickle.dump({"signature": self.train_data_file_sig, "filter": self.train_data_filter_mode,
                      "data": trained_QA_pairs}, open("cache/trained_QA_pairs.pickle", 'wb'))
-
-        print("Cached vocab encoded training data.")
+        if verbose:
+            print("\nCached vocab encoded training data.")
         return True
 
     def batch_generator(self, batch_size=32):
@@ -460,7 +466,7 @@ class ChatBot:
                 return False
         return True
 
-    def _load_cached_v_encoded_train_data(self):
+    def _load_cached_v_encoded_train_data(self, verbose):
         """
         Private method to load the encoded training data from cache.
 
@@ -489,17 +495,17 @@ class ChatBot:
                 self._trained_QA_pairs = QA_file_dict['data']
                 return True
             except (ValueError, AttributeError, TypeError, KeyError) as e:
-                print(f"Exception when loading cached training data: {type(e).__name__}, {e}")
+                if verbose:
+                    print(f"Exception when loading cached training data: {type(e).__name__}, {e}")
         return False
 
     def train(self, data_file, filter_mode, latent_dim, epoch, batch_size, split_pct, verbose):
         """
         Trains the chatbot's encoder and decoder LSTMs (= the Seq2Seq model).
 
-        Note that this method will define a new model for this instance if it doesn't
-        have one or if the latent dimension do not match.
-        Otherwise it will 'keep training' the model for this instance.
-
+        Note that this method will define a new model for this instance if it either
+        doesn't have model or if the latent dimension do not match. Otherwise it will
+        'keep training' the model for this instance.
 
         Note that DATA_FILE is expected to come as a json file where said
         file is has a list of question-answer pairs saved on attribute: 'data'.
@@ -527,38 +533,39 @@ class ChatBot:
         self.train_data_file = data_file
         self.train_data_filter_mode = filter_mode
 
-        if not self.ignore_cache:
-            self._load_cached_v_encoded_train_data()
+        if not self.ignore_cache and (self.model is None or self.encoder is None or self.decoder is None):
+            self._load_cached_v_encoded_train_data(verbose=verbose)
 
-        if not self.ignore_cache and self.has_valid_vocab_encodings():
-            print("[!] Using cached training data encodings.")
-        else:
+        if self.ignore_cache or not self.has_valid_vocab_encodings():
             data_pairs = json.load(open(self.train_data_file))["data"]
             self._create_and_cache_vocab_encoding(training_data_pairs=data_pairs, verbose=verbose)
-
-        print(f"-==Training on {len(self._v_encoded_y)} Question-Answer pairs==-")
+        elif verbose:
+            print("[!] Using cached training data encodings.")
 
         if self.model is None or self.decoder is None or self.encoder is None \
-                or self.model.layers.get_output_at(0).get_shape()[1] != latent_dim:
-            # TODO: test the latent dim checker.
+                or (self.model.layers and self.model.layers[-1].input_shape[2] != latent_dim):
             self.define_models(latent_dim)
             if verbose:
                 print(self.model.summary())
-                print("Defined new model before training.")
+                print("Defined new model.\n")
         elif verbose:
             print(self.model.summary())
-            print("[!] Training a pre-defined (and possibly pre-trained) model.")
+            print("[!] Using a pre-defined (and possibly pre-trained) model.\n")
+
+        print(f">> Training on {len(self._v_encoded_y)} Question-Answer pairs <<")
 
         for ep in range(epoch):
             for X_1, X_2, Y, batch_counter in self.batch_generator(batch_size=batch_size):
                 if verbose:
-                    sys.stdout.flush()
-                    sys.stdout.write('\x1b[2K')
                     print(f"\rEpoch: {ep+1}/{epoch}, Batch: {batch_counter}. \tTraining...")
-
                 X_1t, X_2t, Y_t, X_1v, X_2v, Y_v = ChatBot._create_validation_split(X_1, X_2, Y, split_pct)
                 self.model.fit([X_1t, X_2t], Y_t, epochs=1, batch_size=batch_size,
                                validation_data=([X_1v, X_2v], Y_v), verbose=verbose)
+
+            sys.stdout.write('\x1b[2K')
+            sys.stdout.flush()
+            sys.stdout.write(f"\rFinished epoch: {ep+1}/{epoch}")
+            sys.stdout.flush()
 
         if verbose:
             print(f"Training Complete.\nTrained on {len(self._v_encoded_y)} Question-Answer pairs")
@@ -616,14 +623,14 @@ class ChatBot:
                 print("Response: {}".format(self._vector_to_sentence(Y_hat)))
                 print(" ")
         except KeyboardInterrupt:
-            print("\nDone Chatting...")
+            print("\nDone Chatting...\n")
 
     def save(self, directory):
         """
         :param directory: The directory of where this instance is going to be saved.
         """
         if not os.path.exists(directory):
-            os.mkdir(directory)
+            os.makedirs(directory, exist_ok=True)
         else:
             shutil.rmtree(directory)
             os.mkdir(directory)
@@ -688,12 +695,18 @@ def get_options():
 
 
 def get_saved_model(directory):
+    if not os.path.exists(directory):
+        print(f"'{directory}' is an invalid directory.")
+        return None
+
     saved_models = os.listdir(directory)
     if len(saved_models) == 0:
         print("There are no saved models.")
         return None
+
     if len(saved_models) == 1:
         return saved_models[0]
+
     print("Which model would you like to load? (Type out choice below)")
     print(f"  List of saved models:\n\t{saved_models}")
     saved_models_set = set(saved_models)
@@ -706,21 +719,23 @@ def get_saved_model(directory):
         print(f"'{choice}' is invalid. Choose a valid model from the list of saved models.")
 
 
+OPTS = get_options()  # Global options for interactive sessions.
+
+
 if __name__ == "__main__":
     # TODO: IMPLEMENTED AND TEST DECODER NER FEATURES.
     # TODO: publish README...
-    opts = get_options()
-    if not os.path.exists(opts.saved_models_dir):
-        os.makedirs(opts.saved_models_dir)
+    if not os.path.exists(OPTS.saved_models_dir):
+        os.makedirs(OPTS.saved_models_dir, exist_ok=True)
 
     sys.stdout.write("\rLoad a saved model? (y/n) ")
     sys.stdout.flush()
     user_input = input()
 
-    saved_model_dir = get_saved_model(opts.saved_models_dir) if user_input[0].lower() == 'y' else None
+    saved_model_dir = get_saved_model(OPTS.saved_models_dir) if user_input[0].lower() == 'y' else None
 
     if saved_model_dir is not None:
-        chat_bot = pickle.load(open(f"{opts.saved_models_dir}/{saved_model_dir}/chatbot.pickle", 'rb'))
+        chat_bot = pickle.load(open(f"{OPTS.saved_models_dir}/{saved_model_dir}/chatbot.pickle", 'rb'))
         print(f"\nLoaded model: {saved_model_dir}")
     else:
         new_model_name = None
@@ -734,12 +749,12 @@ if __name__ == "__main__":
             sys.stdout.flush()
             new_model_name = input()
 
-        chat_bot = ChatBot(opts.n_in, opts.n_out, opts.vocab_size, opts.vocab_file,
-                           opts.ignore_cached, not opts.NER_disable)
-        chat_bot.train(opts.train_file, opts.filter_mode, opts.latent_dim, opts.epoch,
-                       opts.batch_size, opts.split, opts.verbose)
+        chat_bot = ChatBot(OPTS.n_in, OPTS.n_out, OPTS.vocab_size, OPTS.vocab_file,
+                           OPTS.ignore_cached, not OPTS.NER_disable, OPTS.verbose)
+        chat_bot.train(OPTS.train_file, OPTS.filter_mode, OPTS.latent_dim, OPTS.epoch,
+                       OPTS.batch_size, OPTS.split, OPTS.verbose)
 
         if new_model_name:
-            new_model_directory = f"{opts.saved_models_dir}/{new_model_name}"
+            new_model_directory = f"{OPTS.saved_models_dir}/{new_model_name}"
             chat_bot.save(new_model_directory)
     chat_bot.chat()
