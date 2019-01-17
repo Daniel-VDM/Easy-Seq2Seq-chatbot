@@ -273,7 +273,7 @@ class ChatBot:
         pickle.dump(dump, open("cache/vocab.pickle", 'wb'))
         self.vocab_data_dict = dump
         if verbose:
-            print(f"\nCached vocab file. Vocab size = {vocab_size}, Vocab Sig = {self.vocab_file_sig}")
+            print(f"Cached vocab file. Vocab size = {vocab_size}, Vocab Sig = {self.vocab_file_sig}")
         return dump
 
     def define_models(self, latent_dim):
