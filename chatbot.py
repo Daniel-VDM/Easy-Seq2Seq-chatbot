@@ -777,10 +777,6 @@ if __name__ == "__main__":
     # TODO: IMPLEMENTED AND TEST DECODER NER FEATURES.
     # TODO: publish README...
 
-    # TODO: Test model saving.
-    # TODO: Test new vocab generation (with no cache).
-    # TODO: Test verbose prints.
-
     if not os.path.exists(OPTS.saved_models_dir):
         os.makedirs(OPTS.saved_models_dir, exist_ok=True)
 
