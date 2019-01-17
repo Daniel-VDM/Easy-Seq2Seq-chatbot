@@ -95,8 +95,8 @@ Options:
                         The number of time setps for the decoder. Default =
                         20.
   -l LATENT_DIM, --latent_dim=LATENT_DIM
-                        The dimensionality of the Encoder and Decoder's LSTM.
-                        Default = 128.
+                        The inner dimensionality of the Encoder and Decoder's 
+                        LSTM. Default = 128.
   -v VOCAB_SIZE, --vocab_size=VOCAB_SIZE
                         The size of the vocab of the Chatbot. Default = None
   -f VOCAB_FILE, --vocab_file=VOCAB_FILE

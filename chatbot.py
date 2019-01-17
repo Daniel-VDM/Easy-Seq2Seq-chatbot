@@ -20,7 +20,8 @@ NER_NLP = spacy.load('en')
 class ChatBot:
 
     def __init__(self, n_in, n_out, vocab_size, vocab_file, ignore_cache, ner_enabled, verbose):
-        if not os.path.exists("cache"):
+        # TODO: verbose re-write...
+        if not os.path.exists("cache"):  # Hardcoded directory.
             os.makedirs("cache")
 
         # Common instance attrs.
@@ -44,7 +45,7 @@ class ChatBot:
                         and len(self.vocab_data_dict["token_to_id"]) != vocab_size:
                     raise ValueError(f"Cached vocab size does not match.")
                 if self.vocab_file_sig != self.vocab_data_dict["signature"]:
-                    raise ValueError(f"{self.vocab_file} is not the source file of 'cache/vocab.pickle'.")
+                    raise ValueError(f"Cached vocab signature does not match.")
                 if self.ner_enabled and ("NER_tokens" not in self.vocab_data_dict.keys()
                                          or "NER_label_to_token_dict" not in self.vocab_data_dict.keys()):
                     raise ValueError("Cached vocab does not contain NER data.")
@@ -60,7 +61,7 @@ class ChatBot:
             self.vocab_data_dict = self._create_and_cache_vocab(vocab_size, verbose=verbose)
         self.token_to_id_dict = self.vocab_data_dict["token_to_id"]
         self.id_to_token_dict = self.vocab_data_dict["id_to_token"]
-        self.vocab_size = len(self.token_to_id_dict) if vocab_size is None else vocab_size
+        self.vocab_size = len(self.token_to_id_dict)  # Ignore param for efficiency.
 
         # NER instance attrs that depend on the vocab.
         if self.ner_enabled:
@@ -139,44 +140,53 @@ class ChatBot:
         X_1v, X_2v, Y_v = np.array(X_1v), np.array(X_2v), np.array(Y_v)
         return X_1t, X_2t, Y_t, X_1v, X_2v, Y_v
 
-    def _create_and_cache_vocab(self, vocab_size, verbose):
+    @staticmethod
+    def create_vocab_asset(vocab_file, NER_on, verbose):
         """
-        Private method used in the constructor.
-
-        Creates and caches a vocab from this instance's vocab file. Note that the
-        vocab file is expected to come as a JSON file where the vocab data is
-        saved as attribute: 'vocab_data'. The vocab data is either a list of 
+        Creates vocab asset from VOCAB_FILE. Note that the VOCAB_FILE is
+        expected to come as a JSON file where the vocab data is saved as
+        attribute: 'vocab_data'. The vocab data is either a list of
         question-answer pairs/tuples or a list of sentences/strings.
 
-        The created vocab uses the most frequent tokens first when truncating the
-        vocab to fit the vocab size.
+        This method can take a while if NER_ON is enabled.
 
-        Note that this method also saves a set of NER tokens (from the given
-        vocab file) for future references if NER is enabled.
+        The vocab file's assets are returned as a dictionary and have the
+        following attrs:
+            'signature': The source file's signature
+            'vocab_tokens': a list of vocab tokens decreasingly order
+                            by frequency.
+            'NER_tokens': (optional) list of NER tokens.
+            'NER_label_to_token_dict': (optional) dict mapping a NER
+                                       label to token set.
 
-        This method can take a while if NER is enabled.
+        Note that vocab tokens are all lower cased.
+
+        :param vocab_file: The path to the JSON vocab file with the vocab data.
+        :param NER_on: Toggle for Name Entity Recognition features.
+        :param verbose: Toggle for update messages.
+        :return vocab file's assets as a dictionary.
         """
         count = 0
         tok_freq = {}
-        ner_tokens = set()
+        NER_tokens = set()
         ner_label_tokens = set()
-        ner_label_to_token_dict = {}
-        vocab_data = json.load(open(self.vocab_file))["data"]
+        NER_label_to_token_dict = {}
+        vocab_data = json.load(open(vocab_file))["data"]
 
         def process_for_entities(nlp_entities):
             for entity in nlp_entities:
                 ner_label_tokens.add(f"<{entity.label_}>")
                 for tok in nltk.word_tokenize(entity.text):
-                    ner_tokens.add(tok)
+                    NER_tokens.add(tok)
                     label = f"<{entity.label_}>"
-                    if label in ner_label_to_token_dict:
-                        ner_label_to_token_dict[label].add(tok)
+                    if label in NER_label_to_token_dict:
+                        NER_label_to_token_dict[label].add(tok)
                     else:
-                        ner_label_to_token_dict[label] = {tok}
+                        NER_label_to_token_dict[label] = {tok}
 
         def process_for_freq(tokens):
             for tok in tokens:
-                if tok not in ner_tokens:
+                if tok not in NER_tokens:
                     tok = tok.lower()
                     if tok in tok_freq:
                         tok_freq[tok] += 1
@@ -185,63 +195,90 @@ class ChatBot:
 
         def progress_message():
             nonlocal count
-            count += 1
-            sys.stdout.write(f"\rParsed {count}/{len(vocab_data)} lines of vocab data.")
-            sys.stdout.flush()
+            if verbose:
+                count += 1
+                sys.stdout.write(f"\rParsed {count}/{len(vocab_data)} lines of vocab data.")
+                sys.stdout.flush()
 
         if len(vocab_data) == 0:
-            raise ValueError(f"{self.vocab_file} contains no data.")
+            raise ValueError(f"{vocab_file} contains no data.")
 
-        print(f">> Creating Vocab from {len(vocab_data)} lines of data <<")
+        print(f">> Creating vocab assets for '{vocab_file}' ({len(vocab_data)} lines of data) <<")
 
         first_vocab_el = vocab_data[0]
         if type(first_vocab_el) == str:
             for line in vocab_data:
-                if self.ner_enabled:
+                if NER_on:
                     process_for_entities(NER_NLP(line).ents)
                 process_for_freq(nltk.word_tokenize(line))
-                if verbose:
-                    progress_message()
+                progress_message()
         elif (type(first_vocab_el) == list or type(first_vocab_el) == tuple) and len(first_vocab_el) == 2:
             for question, answer in vocab_data:
-                if self.ner_enabled:
+                if NER_on:
                     process_for_entities(itertools.chain(NER_NLP(question).ents, NER_NLP(answer).ents))
                 process_for_freq(itertools.chain(nltk.word_tokenize(question), nltk.word_tokenize(answer)))
-                if verbose:
-                    progress_message()
+                progress_message()
         else:
             raise ValueError(f"Vocab data: '{vocab_data}' is not supported.")
 
-        # Hardcoded special tokens. DO NOT change the order of PADD, START and UNK.
-        special_tokens = ["<PADD>", "<START>", "<UNK>"] + list(ner_label_tokens)
-        top_vocab_toks = sorted(list(tok_freq.keys()), key=lambda w: tok_freq.get(w, 0), reverse=True)
-        if vocab_size is not None:
-            top_vocab_toks = top_vocab_toks[:vocab_size - len(special_tokens)]
-        np.random.shuffle(top_vocab_toks)  # Shuffle for validation check of cached files.
-        vocab = special_tokens + top_vocab_toks
+        vocab_tokens = sorted(list(tok_freq.keys()), key=lambda w: tok_freq.get(w, 0), reverse=True)
+        np.random.shuffle(vocab_tokens)  # Shuffle for validation check of cached files.
 
-        if self.ner_enabled:
-            dump = {"signature": self.vocab_file_sig,
-                    "vocab_size": vocab_size,
-                    "token_to_id": {c: i for i, c in enumerate(vocab)},
-                    "id_to_token": {i: c for i, c in enumerate(vocab)},
-                    "NER_tokens": ner_tokens, "NER_label_to_token_dict": ner_label_to_token_dict}
-        else:
-            dump = {"signature": self.vocab_file_sig,
-                    "vocab_size": vocab_size,
-                    "token_to_id": {c: i for i, c in enumerate(vocab)},
-                    "id_to_token": {i: c for i, c in enumerate(vocab)}}
+        vocab_assets = {
+            'signature': f"{vocab_file} (last_mod: {os.path.getmtime(vocab_file)})",
+            'vocab_tokens': vocab_tokens,
+            'NER_tokens': NER_tokens,
+            'NER_label_to_token_dict': NER_label_to_token_dict
+        }
+        return vocab_assets
+
+    def _create_and_cache_vocab(self, vocab_size, verbose):
+        """
+        Private method used in the constructor.
+
+        Creates the vocab data dictionary from the vocab file's assets.
+
+        The script attempts to load the desired vocab asset from the cache.
+        If none is found, the vocab file's assets is created and cached.
+        """
+        if not os.path.exists("cache/vocab_assets"):
+            os.makedirs("cache/vocab_assets", exist_ok=True)
+
+        vocab_asset_cache_file = f"cache/vocab_assets/{self.vocab_file_sig}.pickle"
+        try:
+            if self.ignore_cache:
+                raise ValueError("Ignoring cache.")
+            vocab_assets = pickle.load(open(vocab_asset_cache_file, 'rb'))
+            if vocab_assets['signature'] != self.vocab_file_sig:
+                raise ValueError("Cached vocab asset signatures do not match.")
+        except (FileNotFoundError, ValueError, KeyError) as e:
+            if verbose:
+                print(f"Exception encountered when loading vocab assets: {type(e).__name__}, {e}")
+            vocab_assets = ChatBot.create_vocab_asset(self.vocab_file, self.ner_enabled, verbose=verbose)
+            pickle.dump(vocab_assets, open(vocab_asset_cache_file, 'wb'))
+
+        # Hardcoded special tokens. DO NOT change the order of PADD, START and UNK.
+        special_tokens = ["<PADD>", "<START>", "<UNK>"] + list(vocab_assets['NER_label_to_token_dict'].keys())
+        vocab = special_tokens + vocab_assets['vocab_tokens'][:vocab_size - len(special_tokens)]
+
+        dump = {"signature": vocab_assets['signature'],
+                "vocab_size": vocab_size,
+                "token_to_id": {c: i for i, c in enumerate(vocab)},
+                "id_to_token": {i: c for i, c in enumerate(vocab)},
+                "NER_tokens": vocab_assets['NER_tokens'],
+                "NER_label_to_token_dict": vocab_assets['NER_label_to_token_dict']}
+
         pickle.dump(dump, open("cache/vocab.pickle", 'wb'))
         self.vocab_data_dict = dump
         if verbose:
-            print(f"\nCached vocab file. Vocab size = {vocab_size}, Vocab Data = {self.vocab_file}")
+            print(f"\nCached vocab file. Vocab size = {vocab_size}, Vocab Sig = {self.vocab_file_sig}")
         return dump
 
     def define_models(self, latent_dim):
         """
         Define the encoder and decoder models for this instance.
 
-        :param latent_dim: The dimensionality of the Encoder and Decoder's LSTM.
+        :param latent_dim: The inner dimensionality of the Encoder and Decoder's LSTM.
         """
         assert len(self.token_to_id_dict) == len(self.id_to_token_dict)
 
@@ -518,7 +555,7 @@ class ChatBot:
             1) Mode 0 AND Question must have a '?' token.
             2) Mode 0 AND Question & Answer must have a '?' token.
 
-        :param data_file: The json file containing the question-answer pairs.
+        :param data_file: The path to the json file containing the question-answer pairs.
         :param filter_mode: An int that determines the filter mode of the training data.
         :param latent_dim: The dimensionality of the Encoder and Decoder's LSTM.
         :param epoch: number of epochs in training.
@@ -653,7 +690,7 @@ def get_options():
     opts.add_option('-o', '--n_out', dest='n_out', type=int, default=20,
                     help="The number of time setps for the decoder. Default = 20.")
     opts.add_option('-l', '--latent_dim', dest='latent_dim', type=int, default=128,
-                    help="The dimensionality of the Encoder and Decoder's LSTM. Default = 128.")
+                    help="The inner dimensionality of the Encoder and Decoder's LSTM. Default = 128.")
     opts.add_option('-v', '--vocab_size', dest='vocab_size', type=int, default=None,
                     help='The size of the vocab of the Chatbot. Default = None')
     opts.add_option('-f', '--vocab_file', dest='vocab_file', type=str, default=None,
