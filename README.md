@@ -10,7 +10,7 @@ The goal of the script was to provide an easier way to vary various parameters r
 
 ## Model Explanation
 <p align="center">
-  <img src="https://isaacchanghau.github.io/img/nlp/seq2seq-neuralconver/seq2seq.png" width="900">
+  <img src="https://isaacchanghau.github.io/img/nlp/seq2seq-neuralconver/seq2seq.png" width="799">
   <br><i>Sequence to sequence model diagram.</i>
 </p>
 
@@ -150,7 +150,7 @@ When loading a model, one should get something similar to the following: (if mor
 ## Movie Script Results
 **Data info:**
 
-The 'large' model saved in this repo was trained on [Cornell's Movie Dialogs dataset](https://www.cs.cornell.edu/~cristian/Cornell_Movie-Dialogs_Corpus.html). Said dataset came as a CSV file with 5 columns: LineID, characterID, movieID, character name and text. When converting the CSV file to the JSON file for the script, the following filters were applied: First, it only considers rows where the text is 20 tokens or less. Next, for every row `i` that passes said first filter, the text of row `i` was a question and text of row `i+1` was the respective answer so long as the movieIDs were the same, characterIDs were different and LineIDs was consecutive.
+The 'large' model saved in this repo was trained on [Cornell's Movie Dialogs dataset](https://www.cs.cornell.edu/~cristian/Cornell_Movie-Dialogs_Corpus.html). Said dataset came as a CSV file with 5 columns: LineID, characterID, movieID, character name and text. When converting the CSV file to the JSON file for the script, the following filters were applied: First, it only considers rows where the text is 20 tokens or less. Next, for every row `i` that passes said first filter, the text of row `i` was a question and text of row `i+1` was the respective answer so long as the movieIDs were the same, characterIDs were different and LineIDs were consecutive.
 
 The 'small' model saved in this repo was trained on some handwritten [test data](training_data_scripts/dataset.txt). Each consecutive string in said dataset was a question-answer pair in the JSON file used for the vocab and training.
 
