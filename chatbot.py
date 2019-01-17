@@ -525,10 +525,10 @@ class ChatBot:
             try:
                 if not (self.train_data_file_sig == x1_file_dict["signature"] == x2_file_dict["signature"]
                         == x2_file_dict["signature"] == y_file_dict["signature"] == QA_file_dict["signature"]):
-                    raise ValueError("Miss matched source of cached file.")
+                    raise ValueError("Cached training data's signature does not match.")
                 if not (self.train_data_filter_mode == x1_file_dict['filter'] == x2_file_dict['filter']
                         == x2_file_dict['filter'] == y_file_dict['filter'] == QA_file_dict['filter']):
-                    raise ValueError("Miss matched data filter of cached file.")
+                    raise ValueError("Cached training data's filter does not match.")
                 self._v_encoded_x1 = x1_file_dict['data']
                 self._v_encoded_x2 = x2_file_dict['data']
                 self._v_encoded_y = y_file_dict['data']
