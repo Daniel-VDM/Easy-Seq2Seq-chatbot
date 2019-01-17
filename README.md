@@ -10,7 +10,7 @@ The goal of the script was to provide an easier way to vary various parameters r
 
 ## Model Explanation
 <p align="center">
-  <img src="https://isaacchanghau.github.io/img/nlp/seq2seq-neuralconver/seq2seq.png" width="799">
+  <img src="https://isaacchanghau.github.io/img/nlp/seq2seq-neuralconver/seq2seq.png" width="900">
   <br><i>Sequence to sequence model diagram.</i>
 </p>
 
