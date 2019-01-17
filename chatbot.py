@@ -92,7 +92,7 @@ class ChatBot:
         This requires X_1, X_2 and Y to have at least 2 elements.
         And assumes X_1, X_2 and Y have the same number of elements.
         """
-        v_count = int(np.math.floor(len(X_1)*percentage))
+        v_count = int(np.math.floor(len(X_1) * percentage))
         v_indices = set(np.random.choice(len(X_1), size=v_count, replace=False))
         X_1t, X_2t, Y_t = [], [], []
         X_1v, X_2v, Y_v = [], [], []
@@ -369,11 +369,12 @@ class ChatBot:
 
         :param training_data_pairs: A list of question answer pairs as training data.
         """
+
         def is_valid_data(question, answer):
             q_toks, a_toks = nltk.word_tokenize(question), nltk.word_tokenize(answer)
             if self.train_data_filter_mode == 1 and '?' not in q_toks:
                 return False
-            if self.train_data_filter_mode == 2 and not('?' in q_toks and '?' in a_toks):
+            if self.train_data_filter_mode == 2 and not ('?' in q_toks and '?' in a_toks):
                 return False
             return len(q_toks) <= self.n_in and len(a_toks) <= self.n_out
 
@@ -393,7 +394,7 @@ class ChatBot:
                 encoded_y.append(a_vec)
                 encoded_x2.append(a_shift_vec)
             if self.verbose:
-                sys.stdout.write(f"\rProcessed {i+1}/{len(training_data_pairs)} Question-Answer Pairs.")
+                sys.stdout.write(f"\rProcessed {i + 1}/{len(training_data_pairs)} Question-Answer Pairs.")
                 sys.stdout.flush()
 
         self._v_encoded_x1, self._v_encoded_x2, self._v_encoded_y = encoded_x1, encoded_x2, encoded_y
@@ -436,7 +437,7 @@ class ChatBot:
         np.random.shuffle(lst)
         queue = deque(lst)
         batch_num = 0
-        total_batch_count = int(np.ceil(len(lst)/batch_size))
+        total_batch_count = int(np.ceil(len(lst) / batch_size))
 
         while queue:
             this_batch_size = min(batch_size, len(queue))
@@ -480,7 +481,7 @@ class ChatBot:
         if not self._v_encoded_x1 or not self._v_encoded_x2 \
                 or not self._v_encoded_y or not self._trained_QA_pairs:
             return False
-        if not(len(self._v_encoded_x1) == len(self._v_encoded_x2) == len(self._v_encoded_y)):
+        if not (len(self._v_encoded_x1) == len(self._v_encoded_x2) == len(self._v_encoded_y)):
             return False
 
         N = 30
@@ -592,14 +593,14 @@ class ChatBot:
         for ep in range(epoch):
             for X_1, X_2, Y, batch_counter in self.batch_generator(batch_size=batch_size):
                 if self.verbose:
-                    print(f"\rEpoch: {ep+1}/{epoch}, Batch: {batch_counter}. \tTraining...")
+                    print(f"\rEpoch: {ep + 1}/{epoch}, Batch: {batch_counter}. \tTraining...")
                 X_1t, X_2t, Y_t, X_1v, X_2v, Y_v = ChatBot._create_validation_split(X_1, X_2, Y, split_pct)
                 self.model.fit([X_1t, X_2t], Y_t, epochs=1, batch_size=batch_size,
                                validation_data=([X_1v, X_2v], Y_v), verbose=self.verbose)
 
             sys.stdout.write('\x1b[2K')
             sys.stdout.flush()
-            sys.stdout.write(f"\rFinished epoch: {ep+1}/{epoch}")
+            sys.stdout.write(f"\rFinished epoch: {ep + 1}/{epoch}")
             sys.stdout.flush()
 
         if self.verbose:
@@ -659,6 +660,7 @@ class ChatBot:
                 print(" ")
         except KeyboardInterrupt:
             print("\nDone Chatting...\n")
+            return True
 
     def save(self, directory):
         """
@@ -670,13 +672,19 @@ class ChatBot:
             shutil.rmtree(directory)
             os.mkdir(directory)
         pickle.dump(self, open(f"{directory}/chatbot.pickle", 'wb'))
+
         if not os.path.exists(f"{directory}/backup"):
             os.mkdir(f"{directory}/backup")
         self.encoder.save_weights(f"{directory}/backup/encoder.h5")
         self.decoder.save_weights(f"{directory}/backup/decoder.h5")
-        shutil.copytree("cache", f"{directory}/backup/cache")
         shutil.copyfile(self.train_data_file, f"{directory}/backup/[T-DAT]{self.train_data_file}")
         shutil.copyfile(self.vocab_file, f"{directory}/backup/[V-DAT]{self.vocab_file}")
+
+        # Does NOT save vocab file assets.
+        if not os.path.exists(f"{directory}/backup/cache"):
+            os.mkdir(f"{directory}/backup/cache")
+        for file in filter(lambda f: os.path.isfile(f), os.listdir('cache')):
+            shutil.copyfile(file, f"{directory}/backup/cache/{file}")
         print(f"\nSaved the trained model to: '{directory}'.")
         return True
 
@@ -756,10 +764,14 @@ def get_saved_model(directory):
 
 OPTS = get_options()  # Global options for interactive sessions.
 
-
 if __name__ == "__main__":
     # TODO: IMPLEMENTED AND TEST DECODER NER FEATURES.
     # TODO: publish README...
+
+    # TODO: Test model saving.
+    # TODO: Test new vocab generation (with no cache).
+    # TODO: Test verbose prints.
+
     if not os.path.exists(OPTS.saved_models_dir):
         os.makedirs(OPTS.saved_models_dir, exist_ok=True)
 
