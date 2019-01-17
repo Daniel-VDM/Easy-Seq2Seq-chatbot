@@ -14,7 +14,7 @@ from keras.layers import Input
 from keras.layers import LSTM
 from keras.layers import Dense
 
-NER_NLP = spacy.load('en')
+NER_NLP = spacy.load('en')  # Sometimes bugs out if loaded after layers. (Don't know why.)
 
 
 class ChatBot:
@@ -45,7 +45,7 @@ class ChatBot:
                         and len(self.vocab_data_dict["token_to_id"]) != vocab_size:
                     raise ValueError(f"Cached vocab size does not match.")
                 if self.vocab_file_sig != self.vocab_data_dict["signature"]:
-                    raise ValueError(f"Cached vocab signature does not match.")
+                    raise ValueError(f"Cached vocab signature does not match given vocab file.")
                 if self.ner_enabled and ("NER_tokens" not in self.vocab_data_dict.keys()
                                          or "NER_label_to_token_dict" not in self.vocab_data_dict.keys()):
                     raise ValueError("Cached vocab does not contain NER data.")
@@ -61,7 +61,7 @@ class ChatBot:
             self.vocab_data_dict = self._create_and_cache_vocab(vocab_size)
         self.token_to_id_dict = self.vocab_data_dict["token_to_id"]
         self.id_to_token_dict = self.vocab_data_dict["id_to_token"]
-        self.vocab_size = len(self.token_to_id_dict)  # Ignore param for efficiency.
+        self.vocab_size = len(self.token_to_id_dict)  # Ignore param and use vocab dict for efficiency.
 
         # NER instance attrs that depend on the vocab.
         if self.ner_enabled:
@@ -222,7 +222,6 @@ class ChatBot:
             raise ValueError(f"Vocab data: '{vocab_data}' is not supported.")
 
         vocab_tokens = sorted(list(tok_freq.keys()), key=lambda w: tok_freq.get(w, 0), reverse=True)
-        np.random.shuffle(vocab_tokens)  # Shuffle for validation check of cached files.
 
         vocab_assets = {
             'signature': f"{vocab_file} (last_mod: {os.path.getmtime(vocab_file)})",
@@ -259,7 +258,11 @@ class ChatBot:
 
         # Hardcoded special tokens. DO NOT change the order of PADD, START and UNK.
         special_tokens = ["<PADD>", "<START>", "<UNK>"] + list(vocab_assets['NER_label_to_token_dict'].keys())
-        vocab = special_tokens + vocab_assets['vocab_tokens'][:vocab_size - len(special_tokens)]
+        vocab_tokens = vocab_assets['vocab_tokens']
+        if vocab_size is not None:
+            vocab_tokens = vocab_tokens[:vocab_size - len(special_tokens)]
+        np.random.shuffle(vocab_tokens)
+        vocab = special_tokens + vocab_tokens
 
         dump = {"signature": vocab_assets['signature'],
                 "vocab_size": vocab_size,
@@ -590,6 +593,7 @@ class ChatBot:
 
         print(f">> Training on {len(self._v_encoded_y)} Question-Answer pairs <<")
 
+        os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
         for ep in range(epoch):
             for X_1, X_2, Y, batch_counter in self.batch_generator(batch_size=batch_size):
                 if self.verbose:
@@ -647,12 +651,17 @@ class ChatBot:
         """
         if not self:
             raise RuntimeError("Attempted to chat with an untrained model.")
-        print("Chat Bot ready, type anything to start: (Ctrl + C to exit)")
+        print("Chat Bot ready, type anything to start: (Ctrl + C or type '!EXIT' to stop chatting)")
         try:
             while True:
                 sys.stdout.write(">")
                 sys.stdout.flush()
+
                 input_str = input()
+                if input_str == '!EXIT':
+                    print("Done Chatting...\n")
+                    return True
+
                 vocab_encoded_X_in = [self.v_encode(input_str, self.n_in)]
                 X_in = self._one_hot_encode(vocab_encoded_X_in)
                 Y_hat = self._predict(X_in)
@@ -683,8 +692,8 @@ class ChatBot:
         # Does NOT save vocab file assets.
         if not os.path.exists(f"{directory}/backup/cache"):
             os.mkdir(f"{directory}/backup/cache")
-        for file in filter(lambda f: os.path.isfile(f), os.listdir('cache')):
-            shutil.copyfile(file, f"{directory}/backup/cache/{file}")
+        for file in filter(lambda f: f[-7:] == '.pickle', os.listdir('cache')):
+            shutil.copyfile(f'cache/{file}', f"{directory}/backup/cache/{file}")
         print(f"\nSaved the trained model to: '{directory}'.")
         return True
 
