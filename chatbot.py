@@ -8,7 +8,7 @@ import json
 import nltk
 import numpy as np
 from collections import deque
-from optparse import OptionParser
+from argparse import ArgumentParser
 from keras.models import Model
 from keras.layers import Input
 from keras.layers import LSTM
@@ -19,9 +19,10 @@ NER_NLP = spacy.load('en')
 
 class ChatBot:
 
-    def __init__(self, n_in, n_out, vocab_size, vocab_file, ignore_cache, ner_enabled, verbose):
-        if not os.path.exists("cache"):  # Hardcoded directory.
-            os.makedirs("cache")
+    def __init__(self, n_in, n_out, vocab_size, vocab_file, ignore_cache, ner_enabled, verbose, cache_dir=None):
+        self._cache_dir = cache_dir if cache_dir is not None else 'cache'
+        if not os.path.exists(self._cache_dir):
+            os.makedirs(self._cache_dir)
 
         # Common instance attrs.
         self.n_in, self.n_out = n_in, n_out
@@ -37,7 +38,7 @@ class ChatBot:
         # Vocab creation.
         if os.path.isfile("cache/vocab.pickle") and not ignore_cache:
             try:
-                self.vocab_data_dict = pickle.load(open("cache/vocab.pickle", 'rb'))
+                self.vocab_data_dict = pickle.load(open(f"{self._cache_dir}/vocab.pickle", 'rb'))
                 if len(self.vocab_data_dict["token_to_id"]) != len(self.vocab_data_dict["token_to_id"]):
                     raise ValueError("Cached vocab's dictionary lengths do not match.")
                 if self.vocab_data_dict["vocab_size"] != vocab_size \
@@ -73,11 +74,30 @@ class ChatBot:
 
     def __repr__(self):
         return f"<ChatBot Instance: Vocab Size={self.vocab_size}, n_in={self.n_in}, n_out={self.n_out}," \
-            f" Vocab File={self.vocab_file_sig}, NER={self.ner_enabled}," \
-            f" Training File={self.train_data_file_sig}, Filter Mode={self.train_data_filter_mode}>"
+               f" Vocab File={self.vocab_file_sig}, NER={self.ner_enabled}," \
+               f" Training File={self.train_data_file_sig}, Filter Mode={self.train_data_filter_mode}>"
 
     def __bool__(self):
         return self.encoder is not None and self.decoder is not None
+
+    @staticmethod
+    def load(model_dir, options):
+        """
+        :param model_dir: The directory of the saved model. Must contain the
+                          cache used for the instance that is loaded.
+        :param options: options namespace used for the instance that is loaded.
+        :return: A chatbot object with the loaded model. Or none if an error occurred.
+        """
+        new_instance = ChatBot(options.n_in, options.n_out, options.vocab_size, options.vocab_file,
+                               False, not options.NER_disable, False, f'{model_dir}/cache')
+        new_instance.train(options.train_file, options.filter_mode, options.latent_dim, 0,
+                           options.batch_size, options.split, False)
+        if new_instance.has_valid_vocab_encodings():
+            new_instance.encoder.load_weights(f'{model_dir}/encoder.h5')
+            new_instance.decoder.load_weights(f'{model_dir}/decoder.h5')
+            return new_instance
+        else:
+            print(f"model: {model_dir} cannot be loaded.")
 
     @staticmethod
     def _create_validation_split(X_1, X_2, Y, percentage):
@@ -239,10 +259,10 @@ class ChatBot:
         The script attempts to load the desired vocab asset from the cache.
         If none is found, the vocab file's assets is created and cached.
         """
-        if not os.path.exists("cache/vocab_assets"):
-            os.makedirs("cache/vocab_assets", exist_ok=True)
+        if not os.path.exists(f"{self._cache_dir}/vocab_assets"):
+            os.makedirs(f"{self._cache_dir}/vocab_assets", exist_ok=True)
 
-        vocab_asset_cache_file = f"cache/vocab_assets/{self.vocab_file_sig}.pickle"
+        vocab_asset_cache_file = f"{self._cache_dir}/vocab_assets/{self.vocab_file_sig}.pickle"
         try:
             if self.ignore_cache:
                 raise ValueError("Ignoring cache.")
@@ -270,7 +290,7 @@ class ChatBot:
                 "NER_tokens": vocab_assets['NER_tokens'],
                 "NER_label_to_token_dict": vocab_assets['NER_label_to_token_dict']}
 
-        pickle.dump(dump, open("cache/vocab.pickle", 'wb'))
+        pickle.dump(dump, open(f"{self._cache_dir}/vocab.pickle", 'wb'))
         self.vocab_data_dict = dump
         if verbose:
             print(f"Cached vocab file. Vocab size = {vocab_size}, Vocab Sig = {self.vocab_file_sig}")
@@ -404,13 +424,13 @@ class ChatBot:
         self._trained_QA_pairs = trained_QA_pairs
 
         pickle.dump({"signature": self.train_data_file_sig, "filter": self.train_data_filter_mode,
-                     "data": encoded_x1}, open("cache/x1.pickle", 'wb'))
+                     "data": encoded_x1}, open(f"{self._cache_dir}/x1.pickle", 'wb'))
         pickle.dump({"signature": self.train_data_file_sig, "filter": self.train_data_filter_mode,
-                     "data": encoded_x2}, open("cache/x2.pickle", 'wb'))
+                     "data": encoded_x2}, open(f"{self._cache_dir}/x2.pickle", 'wb'))
         pickle.dump({"signature": self.train_data_file_sig, "filter": self.train_data_filter_mode,
-                     "data": encoded_y}, open("cache/y.pickle", 'wb'))
+                     "data": encoded_y}, open(f"{self._cache_dir}/y.pickle", 'wb'))
         pickle.dump({"signature": self.train_data_file_sig, "filter": self.train_data_filter_mode,
-                     "data": trained_QA_pairs}, open("cache/trained_QA_pairs.pickle", 'wb'))
+                     "data": trained_QA_pairs}, open(f"{self._cache_dir}/trained_QA_pairs.pickle", 'wb'))
         if verbose:
             print("\nCached vocab encoded training data.")
         return True
@@ -514,13 +534,14 @@ class ChatBot:
         filter does not match this instance's data file or filter
         setting (respectively).
         """
-        if not self.ignore_cache and os.path.isfile("cache/x1.pickle") \
-                and os.path.isfile("cache/x2.pickle") and os.path.isfile("cache/y.pickle") \
-                and os.path.isfile("cache/trained_QA_pairs.pickle"):
-            x1_file_dict = pickle.load(open("cache/x1.pickle", 'rb'))
-            x2_file_dict = pickle.load(open("cache/x2.pickle", 'rb'))
-            y_file_dict = pickle.load(open("cache/y.pickle", 'rb'))
-            QA_file_dict = pickle.load(open("cache/trained_QA_pairs.pickle", 'rb'))
+        if not self.ignore_cache and os.path.isfile(f"{self._cache_dir}/x1.pickle") \
+                and os.path.isfile(f"{self._cache_dir}/x2.pickle") \
+                and os.path.isfile(f"{self._cache_dir}/y.pickle") \
+                and os.path.isfile(f"{self._cache_dir}/trained_QA_pairs.pickle"):
+            x1_file_dict = pickle.load(open(f"{self._cache_dir}/x1.pickle", 'rb'))
+            x2_file_dict = pickle.load(open(f"{self._cache_dir}/x2.pickle", 'rb'))
+            y_file_dict = pickle.load(open(f"{self._cache_dir}/y.pickle", 'rb'))
+            QA_file_dict = pickle.load(open(f"{self._cache_dir}/trained_QA_pairs.pickle", 'rb'))
 
             try:
                 if not (self.train_data_file_sig == x1_file_dict["signature"] == x2_file_dict["signature"]
@@ -567,21 +588,11 @@ class ChatBot:
                           that is held out for validation.
         :param verbose: Toggle update messages.
         """
-        assert len(self.token_to_id_dict) == len(self.id_to_token_dict)
-
         self.train_data_file_sig = f"{data_file} (last_mod: {os.path.getmtime(data_file)})"
         self.train_data_file = data_file
         self.train_data_filter_mode = filter_mode
 
-        if not self.ignore_cache and (self.model is None or self.encoder is None or self.decoder is None):
-            self._load_cached_v_encoded_train_data(verbose=verbose)
-
-        if self.ignore_cache or not self.has_valid_vocab_encodings():
-            data_pairs = json.load(open(self.train_data_file))["data"]
-            self._create_and_cache_vocab_encoding(training_data_pairs=data_pairs, verbose=verbose)
-        elif verbose:
-            print("[!] Using cached training data encodings.")
-
+        # Define model if none is defined already.
         if self.model is None or self.decoder is None or self.encoder is None \
                 or (self.model.layers and self.model.layers[-1].input_shape[2] != latent_dim):
             self.define_models(latent_dim)
@@ -592,24 +603,54 @@ class ChatBot:
             print(self.model.summary())
             print("[!] Using a pre-defined (and possibly pre-trained) model.\n")
 
-        print(f">> Training on {len(self._v_encoded_y)} Question-Answer pairs <<")
+        # Load cached training data encodings.
+        self._load_cached_v_encoded_train_data(verbose=verbose)
+        if not self.has_valid_vocab_encodings():
+            data_pairs = json.load(open(self.train_data_file))["data"]
+            self._create_and_cache_vocab_encoding(training_data_pairs=data_pairs, verbose=verbose)
+        elif verbose:
+            print("[!] Using cached training data encodings.")
 
-        os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
-        for ep in range(epoch):
+        try:  # Recover model if possible, otherwise setup recovering variables.
+            if self.ignore_cache:
+                raise ValueError("Ignoring cache")
+            model_sig = pickle.load(open(f'{self._cache_dir}/temp_model/sig.pickle', 'rb'))
+            if model_sig['OPTS'] == OPTS and model_sig['repr'] == repr(self):
+                self.encoder.load_weights(f'{self._cache_dir}/temp_model/encoder.h5')
+                self.decoder.load_weights(f'{self._cache_dir}/temp_model/decoder.h5')
+            i = model_sig['epoch_count']
+            if verbose:
+                print("[!] Recovered model from cache.")
+        except (FileNotFoundError, KeyError, ValueError):
+            os.makedirs(f'{self._cache_dir}/temp_model', exist_ok=True)
+            i = 0
+
+        if not epoch:  # Early termination if there is nothing to train.
+            return True
+
+        # Train the model.
+        while i < epoch:
             for X_1, X_2, Y, batch_counter in self.batch_generator(batch_size=batch_size):
                 if verbose:
-                    print(f"\rEpoch: {ep + 1}/{epoch}, Batch: {batch_counter}. \tTraining...")
+                    print(f"\rEpoch: {i+1}/{epoch}, Batch: {batch_counter}. \tTraining...")
                 X_1t, X_2t, Y_t, X_1v, X_2v, Y_v = ChatBot._create_validation_split(X_1, X_2, Y, split_pct)
                 self.model.fit([X_1t, X_2t], Y_t, epochs=1, batch_size=batch_size,
                                validation_data=([X_1v, X_2v], Y_v), verbose=verbose)
 
             sys.stdout.write('\x1b[2K')
             sys.stdout.flush()
-            sys.stdout.write(f"\rFinished epoch: {ep + 1}/{epoch}")
+            sys.stdout.write(f"\rFinished epoch: {i+1}/{epoch}")
             sys.stdout.flush()
 
+            pickle.dump({'OPTS': OPTS, 'epoch_count': i, 'repr': repr(self)},
+                        open(f'{self._cache_dir}/temp_model/sig.pickle', 'wb'))
+            self.encoder.save_weights(f'{self._cache_dir}/temp_model/encoder.h5')
+            self.decoder.save_weights(f'{self._cache_dir}/temp_model/decoder.h5')
+            i += 1
+
         if verbose:
-            print(f"Training Complete.\nTrained on {len(self._v_encoded_y)} Question-Answer pairs")
+            print(f"\nTraining Complete.\nTrained on {len(self._v_encoded_y)} Question-Answer pairs")
+        shutil.rmtree(f'{self._cache_dir}/temp_model')
         return True
 
     def _predict(self, X_in):
@@ -681,67 +722,64 @@ class ChatBot:
         else:
             shutil.rmtree(directory)
             os.mkdir(directory)
-        pickle.dump(self, open(f"{directory}/chatbot.pickle", 'wb'))
 
-        if not os.path.exists(f"{directory}/backup"):
-            os.mkdir(f"{directory}/backup")
-        self.encoder.save_weights(f"{directory}/backup/encoder.h5")
-        self.decoder.save_weights(f"{directory}/backup/decoder.h5")
-        shutil.copyfile(self.train_data_file, f"{directory}/backup/[T-DAT]{self.train_data_file}")
-        shutil.copyfile(self.vocab_file, f"{directory}/backup/[V-DAT]{self.vocab_file}")
+        pickle.dump(OPTS, open(f"{directory}/options.pickle", 'wb'))
+        self.encoder.save_weights(f"{directory}/encoder.h5")
+        self.decoder.save_weights(f"{directory}/decoder.h5")
+        shutil.copyfile(self.train_data_file, f"{directory}/[T-DAT]{self.train_data_file}")
+        shutil.copyfile(self.vocab_file, f"{directory}/[V-DAT]{self.vocab_file}")
 
-        # Does NOT save vocab file assets.
-        if not os.path.exists(f"{directory}/backup/cache"):
-            os.mkdir(f"{directory}/backup/cache")
-        for file in filter(lambda f: f[-7:] == '.pickle', os.listdir('cache')):
-            shutil.copyfile(f'cache/{file}', f"{directory}/backup/cache/{file}")
+        if not os.path.exists(f"{directory}/{self._cache_dir}"):
+            os.mkdir(f"{directory}/{self._cache_dir}")
+        for file in filter(lambda f: f[-7:] == '.pickle', os.listdir(self._cache_dir)):
+            shutil.copyfile(f'{self._cache_dir}/{file}', f"{directory}/{self._cache_dir}/{file}")
         print(f"\nSaved the trained model to: '{directory}'.")
         return True
 
 
 def get_options():
-    opts = OptionParser()
-    opts.add_option('-i', '--n_in', dest='n_in', type=int, default=10,
-                    help="The number of time steps for the encoder. Default = 10.")
-    opts.add_option('-o', '--n_out', dest='n_out', type=int, default=20,
-                    help="The number of time setps for the decoder. Default = 20.")
-    opts.add_option('-l', '--latent_dim', dest='latent_dim', type=int, default=128,
-                    help="The inner dimensionality of the Encoder and Decoder's LSTM. Default = 128.")
-    opts.add_option('-v', '--vocab_size', dest='vocab_size', type=int, default=None,
-                    help='The size of the vocab of the Chatbot. Default = None')
-    opts.add_option('-f', '--vocab_file', dest='vocab_file', type=str, default=None,
-                    help="The directory of the JSON file that is used to define the vocab. "
-                         "The 'data' attribute can be either question-answer pairs or just strings/sentences. "
-                         "Default = whatever the train_file is.")
-    opts.add_option("-I", '--ignore_cache', action="store_true", dest="ignore_cached",
-                    help="Forces the script to ignore the cached files.")
-    opts.add_option("-N", '--NER_disable', action="store_true", dest="NER_disable",
-                    help="Turns off Name Entity Recognition as part of the chatbot model. "
-                         "Note that NER adds a considerable amount of complexity in encoding "
-                         "the training data.")
-    opts.add_option("-M", '--verbose', action="store_true", dest="verbose",
-                    help="Toggles verbose on.")
-    opts.add_option('-t', '--train_file', dest='train_file', type=str, default="Cornell_Movie_Dialogs_Data.json",
-                    help="The directory of the JSON file that is used to train the model. "
-                         "The 'data' attribute must be a list of question-answer pairs."
-                         "Default = 'Cornell_Movie_Dialogs_Data.json'")
-    opts.add_option('-c', '--filter_mode', dest='filter_mode', type=int, default=0,
-                    help="An integer that dictates the filter imposed of the data. MODES: {0, 1, 2}. "
-                         "Mode 0: Only take Questions that have N_in number of tokens and only take Answers "
-                         "that have n_out number of tokens. Mode 1: All of Mode 0 AND Questions must have a '?' token. "
-                         "Mode 2: All of Mode 0 AND Question & Answer must have a '?' token. "
-                         "Default = 0")
-    opts.add_option('-e', '--epoch', dest='epoch', type=int, default=500,
-                    help="The number of epochs for training. Default = 100.")
-    opts.add_option('-b', '--batch_size', dest='batch_size', type=int, default=32,
-                    help="The batch size for training. Default = 32.")
-    opts.add_option('-s', '--split', dest='split', type=float, default=0.35,
-                    help="The percentage (float between 0 - 1) of data held out for validation. "
-                         "Default = 0.35")
-    opts.add_option('-m', '--saved_models_dir', dest='saved_models_dir', type=str, default="saved_models",
-                    help="The directory for all of the saved (trained) models. "
-                         "Default = 'saved_models'")
-    options = opts.parse_args()[0]
+    opts = ArgumentParser()
+    opts.add_argument('-i', '--n_in', dest='n_in', type=int, default=10,
+                      help="The number of time steps for the encoder. Default = 10.")
+    opts.add_argument('-o', '--n_out', dest='n_out', type=int, default=20,
+                      help="The number of time setps for the decoder. Default = 20.")
+    opts.add_argument('-l', '--latent_dim', dest='latent_dim', type=int, default=128,
+                      help="The inner dimensionality of the Encoder and Decoder's LSTM. Default = 128.")
+    opts.add_argument('-v', '--vocab_size', dest='vocab_size', type=int, default=None,
+                      help='The size of the vocab of the Chatbot. Default = None')
+    opts.add_argument('-f', '--vocab_file', dest='vocab_file', type=str, default=None,
+                      help="The directory of the JSON file that is used to define the vocab. "
+                           "The 'data' attribute can be either question-answer pairs or just strings/sentences. "
+                           "Default = whatever the train_file is.")
+    opts.add_argument("-I", '--ignore_cache', action="store_true", dest="ignore_cached",
+                      help="Forces the script to ignore the cached files.")
+    opts.add_argument("-N", '--NER_disable', action="store_true", dest="NER_disable",
+                      help="Turns off Name Entity Recognition as part of the chatbot model. "
+                           "Note that NER adds a considerable amount of complexity in encoding "
+                           "the training data.")
+    opts.add_argument("-M", '--verbose', action="store_true", dest="verbose",
+                      help="Toggles verbose on.")
+    opts.add_argument('-t', '--train_file', dest='train_file', type=str, default="Cornell_Movie_Dialogs_Data.json",
+                      help="The directory of the JSON file that is used to train the model. "
+                           "The 'data' attribute must be a list of question-answer pairs."
+                           "Default = 'Cornell_Movie_Dialogs_Data.json'")
+    opts.add_argument('-c', '--filter_mode', dest='filter_mode', type=int, default=0,
+                      help="An integer that dictates the filter imposed of the data. MODES: {0, 1, 2}. "
+                           "Mode 0: Only take Questions that have N_in number of tokens and only take Answers "
+                           "that have n_out number of tokens. Mode 1: All of Mode 0 AND Questions must have "
+                           "a '?' token. Mode 2: All of Mode 0 AND Question & Answer must have a '?' token. "
+                           "Default = 0")
+    opts.add_argument('-e', '--epoch', dest='epoch', type=int, default=500,
+                      help="The number of epochs for training. Default = 100.")
+    opts.add_argument('-b', '--batch_size', dest='batch_size', type=int, default=32,
+                      help="The batch size for training. Default = 32.")
+    opts.add_argument('-s', '--split', dest='split', type=float, default=0.35,
+                      help="The percentage (float between 0 - 1) of data held out for validation. "
+                           "Default = 0.35")
+    opts.add_argument('-m', '--saved_models_dir', dest='saved_models_dir', type=str, default="saved_models",
+                      help="The directory for all of the saved (trained) models. "
+                           "Default = 'saved_models'")
+    options = opts.parse_args()
     if options.vocab_file is None:
         options.vocab_file = options.train_file
     return options
@@ -785,12 +823,17 @@ if __name__ == "__main__":
     sys.stdout.flush()
     user_input = input()
 
-    saved_model_dir = get_saved_model(OPTS.saved_models_dir) if user_input[0].lower() == 'y' else None
-
-    if saved_model_dir is not None:
-        chat_bot = pickle.load(open(f"{OPTS.saved_models_dir}/{saved_model_dir}/chatbot.pickle", 'rb'))
-        print(f"\nLoaded model: {saved_model_dir}")
+    if user_input[0].lower() == 'y':
+        saved_model_dir = f"{OPTS.saved_models_dir}/{get_saved_model(OPTS.saved_models_dir)}"
     else:
+        saved_model_dir = None
+    try:
+        if saved_model_dir is None:
+            raise ValueError("No file to load.")
+        loaded_model_options = pickle.load(open(f"{saved_model_dir}/options.pickle", 'rb'))
+        chat_bot = ChatBot.load(saved_model_dir, loaded_model_options)
+        print(f"\nLoaded model: {saved_model_dir.split('/')[-1]}")
+    except (ValueError, FileNotFoundError):
         new_model_name = None
 
         sys.stdout.write("\rSave the newly trained model? (y/n) ")
