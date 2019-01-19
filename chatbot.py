@@ -487,7 +487,7 @@ class ChatBot:
         if not (len(self._v_encoded_x1) == len(self._v_encoded_x2) == len(self._v_encoded_y)):
             return False
 
-        N = 30
+        N = 20
         arr = np.random.choice(len(self._v_encoded_x1), size=min(N, len(self._v_encoded_x1)), replace=False)
         for i in arr:
             question_str, answer_str = self._trained_QA_pairs[i]
@@ -508,7 +508,9 @@ class ChatBot:
 
     def _load_cached_v_encoded_train_data(self, verbose):
         """
-        Private method to load the encoded training data from cache.
+        Private method used in the 'train' method.
+
+        This loads the encoded training data from cache.
 
         This does not load the cache file if the signature or
         filter does not match this instance's data file or filter
@@ -539,6 +541,21 @@ class ChatBot:
                     print(f"Exception when loading cached training data: {type(e).__name__}, {e}")
         return False
 
+    def _recover_trained_model(self, training_sig):
+        """
+        Private method used in the 'train' method.
+
+        This is used to recover a trained model from cache in the event
+        of a script interruption during training.
+
+        returns the epoch counts of the recovered model.
+        """
+        model_sig = pickle.load(open('cache/temp_model/sig.pickle', 'rb'))
+        if model_sig['OPTS'] == training_sig['OPTS']:
+            self.encoder.load_weights(open('cache/temp_model/encoder.h5'))
+            self.decoder.load_weights(open('cache/temp_model/encoder.h5'))
+        return model_sig['epoch_count']
+
     def train(self, data_file, filter_mode, latent_dim, epoch, batch_size, split_pct, verbose):
         """
         Trains this instances encoder and decoder LSTMs (= the Seq2Seq model).
@@ -567,21 +584,11 @@ class ChatBot:
                           that is held out for validation.
         :param verbose: Toggle update messages.
         """
-        assert len(self.token_to_id_dict) == len(self.id_to_token_dict)
-
         self.train_data_file_sig = f"{data_file} (last_mod: {os.path.getmtime(data_file)})"
         self.train_data_file = data_file
         self.train_data_filter_mode = filter_mode
 
-        if not self.ignore_cache and (self.model is None or self.encoder is None or self.decoder is None):
-            self._load_cached_v_encoded_train_data(verbose=verbose)
-
-        if self.ignore_cache or not self.has_valid_vocab_encodings():
-            data_pairs = json.load(open(self.train_data_file))["data"]
-            self._create_and_cache_vocab_encoding(training_data_pairs=data_pairs, verbose=verbose)
-        elif verbose:
-            print("[!] Using cached training data encodings.")
-
+        # Define model if none is defined already.
         if self.model is None or self.decoder is None or self.encoder is None \
                 or (self.model.layers and self.model.layers[-1].input_shape[2] != latent_dim):
             self.define_models(latent_dim)
@@ -592,9 +599,29 @@ class ChatBot:
             print(self.model.summary())
             print("[!] Using a pre-defined (and possibly pre-trained) model.\n")
 
-        print(f">> Training on {len(self._v_encoded_y)} Question-Answer pairs <<")
+        # Load cached training data encodings.
+        self._load_cached_v_encoded_train_data(verbose=verbose)
+        if not self.has_valid_vocab_encodings():
+            data_pairs = json.load(open(self.train_data_file))["data"]
+            self._create_and_cache_vocab_encoding(training_data_pairs=data_pairs, verbose=verbose)
+        elif verbose:
+            print("[!] Using cached training data encodings.")
 
+        print(f">> Training on {len(self._v_encoded_y)} Question-Answer pairs <<")
         os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+
+        # Recover model if possible, other setup recovering variables.
+        if not self.ignore_cache and os.path.exists('cache/temp_model'):
+            model_sig = pickle.load(open('cache/temp_model/sig.pickle', 'rb'))
+            if model_sig['OPTS'] == OPTS:
+                self.encoder.load_weights('cache/temp_model/encoder.h5')
+                self.decoder.load_weights('cache/temp_model/decoder.h5')
+            epoch -= model_sig['epoch_count']
+            if verbose:
+                print("[!] Recovered model from cache.")
+        else:
+            os.mkdir('cache/temp_model')
+
         for ep in range(epoch):
             for X_1, X_2, Y, batch_counter in self.batch_generator(batch_size=batch_size):
                 if verbose:
@@ -602,14 +629,18 @@ class ChatBot:
                 X_1t, X_2t, Y_t, X_1v, X_2v, Y_v = ChatBot._create_validation_split(X_1, X_2, Y, split_pct)
                 self.model.fit([X_1t, X_2t], Y_t, epochs=1, batch_size=batch_size,
                                validation_data=([X_1v, X_2v], Y_v), verbose=verbose)
-
             sys.stdout.write('\x1b[2K')
             sys.stdout.flush()
             sys.stdout.write(f"\rFinished epoch: {ep + 1}/{epoch}")
             sys.stdout.flush()
+            if ep % 10 == 0:  # Save the model for recovery every 10 epochs.
+                pickle.dump({'OPTS': OPTS, 'epoch_count': ep+1}, open('cache/temp_model/sig.pickle', 'wb'))
+                self.encoder.save_weights('cache/temp_model/encoder.h5')
+                self.decoder.save_weights('cache/temp_model/decoder.h5')
 
         if verbose:
             print(f"Training Complete.\nTrained on {len(self._v_encoded_y)} Question-Answer pairs")
+        shutil.rmtree('cache/temp_model')
         return True
 
     def _predict(self, X_in):
