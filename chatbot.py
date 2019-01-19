@@ -615,7 +615,7 @@ class ChatBot:
             if self.ignore_cache:
                 raise ValueError("Ignoring cache")
             model_sig = pickle.load(open(f'{self._cache_dir}/temp_model/sig.pickle', 'rb'))
-            if model_sig['OPTS'] == OPTS and model_sig['repr'] == repr(self):
+            if model_sig['OPTIONS'] == OPTIONS and model_sig['repr'] == repr(self):
                 self.encoder.load_weights(f'{self._cache_dir}/temp_model/encoder.h5')
                 self.decoder.load_weights(f'{self._cache_dir}/temp_model/decoder.h5')
             i = model_sig['epoch_count']
@@ -642,7 +642,7 @@ class ChatBot:
             sys.stdout.write(f"\rFinished epoch: {i+1}/{epoch}")
             sys.stdout.flush()
 
-            pickle.dump({'OPTS': OPTS, 'epoch_count': i, 'repr': repr(self)},
+            pickle.dump({'OPTIONS': OPTIONS, 'epoch_count': i, 'repr': repr(self)},
                         open(f'{self._cache_dir}/temp_model/sig.pickle', 'wb'))
             self.encoder.save_weights(f'{self._cache_dir}/temp_model/encoder.h5')
             self.decoder.save_weights(f'{self._cache_dir}/temp_model/decoder.h5')
@@ -723,7 +723,7 @@ class ChatBot:
             shutil.rmtree(directory)
             os.mkdir(directory)
 
-        pickle.dump(OPTS, open(f"{directory}/options.pickle", 'wb'))
+        pickle.dump(OPTIONS, open(f"{directory}/options.pickle", 'wb'))
         self.encoder.save_weights(f"{directory}/encoder.h5")
         self.decoder.save_weights(f"{directory}/decoder.h5")
         shutil.copyfile(self.train_data_file, f"{directory}/[T-DAT]{self.train_data_file}")
@@ -810,21 +810,21 @@ def get_saved_model(directory):
         print(f"'{choice}' is invalid. Choose a valid model from the list of saved models.")
 
 
-OPTS = get_options()  # Global options for interactive sessions.
+OPTIONS = get_options()  # Global options for interactive sessions.
 
 if __name__ == "__main__":
     # TODO: IMPLEMENTED AND TEST DECODER NER FEATURES.
     # TODO: publish README...
 
-    if not os.path.exists(OPTS.saved_models_dir):
-        os.makedirs(OPTS.saved_models_dir, exist_ok=True)
+    if not os.path.exists(OPTIONS.saved_models_dir):
+        os.makedirs(OPTIONS.saved_models_dir, exist_ok=True)
 
     sys.stdout.write("\rLoad a saved model? (y/n) ")
     sys.stdout.flush()
     user_input = input()
 
     if user_input[0].lower() == 'y':
-        saved_model_dir = f"{OPTS.saved_models_dir}/{get_saved_model(OPTS.saved_models_dir)}"
+        saved_model_dir = f"{OPTIONS.saved_models_dir}/{get_saved_model(OPTIONS.saved_models_dir)}"
     else:
         saved_model_dir = None
     try:
@@ -845,12 +845,12 @@ if __name__ == "__main__":
             sys.stdout.flush()
             new_model_name = input()
 
-        chat_bot = ChatBot(OPTS.n_in, OPTS.n_out, OPTS.vocab_size, OPTS.vocab_file,
-                           OPTS.ignore_cached, not OPTS.NER_disable, OPTS.verbose)
-        chat_bot.train(OPTS.train_file, OPTS.filter_mode, OPTS.latent_dim, OPTS.epoch,
-                       OPTS.batch_size, OPTS.split, OPTS.verbose)
+        chat_bot = ChatBot(OPTIONS.n_in, OPTIONS.n_out, OPTIONS.vocab_size, OPTIONS.vocab_file,
+                           OPTIONS.ignore_cached, not OPTIONS.NER_disable, OPTIONS.verbose)
+        chat_bot.train(OPTIONS.train_file, OPTIONS.filter_mode, OPTIONS.latent_dim, OPTIONS.epoch,
+                       OPTIONS.batch_size, OPTIONS.split, OPTIONS.verbose)
 
         if new_model_name:
-            new_model_directory = f"{OPTS.saved_models_dir}/{new_model_name}"
+            new_model_directory = f"{OPTIONS.saved_models_dir}/{new_model_name}"
             chat_bot.save(new_model_directory)
     chat_bot.chat()
