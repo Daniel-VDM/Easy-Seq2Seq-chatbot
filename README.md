@@ -59,13 +59,13 @@ The script filters the question-answer training data to get more useful q-and-a 
 
 The script supports vocab and vocab encoded data caching as those two things can take a long time to generate (especially if NER is enabled). Every time a vocab is created, it is cached, and if the JSON file for the vocab is the same as the JSON file used to generate the cache file, the cache vocab is loaded. The vocab encoded data is cached every time it's generated and the cached file is loaded in a case similar to that of the vocab cache file. (Reference the code for details).
 
-**Model Saving:**
-
-Since the goal of the script is to try out various different parameters and datasets, the script can save and load models (vocab, LSTMs and all). The user can choose where to load and save the models. Note that any change to the chatbot script may mess up the saved model, however, there are backups (model weights and vocab pickle files) for each saved model that could be used to reconstruct the model. 
-
 **Training Model Recovery:**
 
 This script saves a 'recovery' model in the cache at the end of each epoch during training. If the script were to get interrupted for whatever reason, it can recover its training progress by loading said model and resume training. 
+
+**Model Saving:**
+
+Since the goal of the script is to try out various different parameters and datasets, the script can save and load models (vocab, LSTMs and all). The user can choose where to load and save the models. Note that any change to the chatbot script may mess up the saved model, however, there are backups (model weights and vocab pickle files) for each saved model that could be used to reconstruct the model. 
 
 ## User Guide
 **Dependencies:** Python 3.6+, Numpy, Keras, Tensorflow, nltk, spaCy. It is recommended to have Tensorflow work with a GPU since large models will take a considerable amount of time to train (this will require a supported NVIDIA GPU). Also, it is recommended to have around 4 GB of system memory for relatively large models with a reasonable batch size. 
