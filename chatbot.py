@@ -135,7 +135,8 @@ class ChatBot:
                 X_1t.append(X_1[i])
                 X_2t.append(X_2[i])
                 Y_t.append(Y[i])
-        X_1t, X_2t, Y_t = np.array(X_1t), np.array(X_2t), np.array(Y_t)
+        X_1t, X_2t, Y_t = np.array(X_1t), np.array(X_2t
+                                                   ), np.array(Y_t)
         X_1v, X_2v, Y_v = np.array(X_1v), np.array(X_2v), np.array(Y_v)
         return X_1t, X_2t, Y_t, X_1v, X_2v, Y_v
 
@@ -487,11 +488,12 @@ class ChatBot:
         if not (len(self._v_encoded_x1) == len(self._v_encoded_x2) == len(self._v_encoded_y)):
             return False
 
-        N = 20
+        N = 30
         arr = np.random.choice(len(self._v_encoded_x1), size=min(N, len(self._v_encoded_x1)), replace=False)
         for i in arr:
             question_str, answer_str = self._trained_QA_pairs[i]
 
+            # Encode using this instances vocab.
             q_vec_ref = self.v_encode(question_str, self.n_in)
             a_vec_ref = self.v_encode(answer_str, self.n_out)
             a_shift_vec_ref = np.roll(a_vec_ref, 1)
@@ -610,34 +612,39 @@ class ChatBot:
         print(f">> Training on {len(self._v_encoded_y)} Question-Answer pairs <<")
         os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
-        # Recover model if possible, other setup recovering variables.
-        if not self.ignore_cache and os.path.exists('cache/temp_model'):
+        try:  # Recover model if possible, otherwise setup recovering variables.
+            if self.ignore_cache:
+                raise ValueError("Ignoring cache")
             model_sig = pickle.load(open('cache/temp_model/sig.pickle', 'rb'))
-            if model_sig['OPTS'] == OPTS:
+            if model_sig['OPTS'] == OPTS and model_sig['repr'] == repr(self):
                 self.encoder.load_weights('cache/temp_model/encoder.h5')
                 self.decoder.load_weights('cache/temp_model/decoder.h5')
-            epoch -= model_sig['epoch_count']
+            i = model_sig['epoch_count']
             if verbose:
                 print("[!] Recovered model from cache.")
-        else:
-            os.mkdir('cache/temp_model')
+        except (FileNotFoundError, KeyError, ValueError):
+            os.makedirs('cache/temp_model', exist_ok=True)
+            i = 0
 
         # Train the model.
-        for ep in range(epoch):
+        while i < epoch:
             for X_1, X_2, Y, batch_counter in self.batch_generator(batch_size=batch_size):
                 if verbose:
-                    print(f"\rEpoch: {ep + 1}/{epoch}, Batch: {batch_counter}. \tTraining...")
+                    print(f"\rEpoch: {i+1}/{epoch}, Batch: {batch_counter}. \tTraining...")
                 X_1t, X_2t, Y_t, X_1v, X_2v, Y_v = ChatBot._create_validation_split(X_1, X_2, Y, split_pct)
                 self.model.fit([X_1t, X_2t], Y_t, epochs=1, batch_size=batch_size,
                                validation_data=([X_1v, X_2v], Y_v), verbose=verbose)
+
             sys.stdout.write('\x1b[2K')
             sys.stdout.flush()
-            sys.stdout.write(f"\rFinished epoch: {ep + 1}/{epoch}")
+            sys.stdout.write(f"\rFinished epoch: {i+1}/{epoch}")
             sys.stdout.flush()
-            if ep % 10 == 0:  # Save the model for recovery every 10 epochs.
-                pickle.dump({'OPTS': OPTS, 'epoch_count': ep+1}, open('cache/temp_model/sig.pickle', 'wb'))
-                self.encoder.save_weights('cache/temp_model/encoder.h5')
-                self.decoder.save_weights('cache/temp_model/decoder.h5')
+
+            pickle.dump({'OPTS': OPTS, 'epoch_count': i, 'repr': repr(self)},
+                        open('cache/temp_model/sig.pickle', 'wb'))
+            self.encoder.save_weights('cache/temp_model/encoder.h5')
+            self.decoder.save_weights('cache/temp_model/decoder.h5')
+            i += 1
 
         if verbose:
             print(f"Training Complete.\nTrained on {len(self._v_encoded_y)} Question-Answer pairs")
