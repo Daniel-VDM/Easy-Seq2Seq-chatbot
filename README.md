@@ -62,7 +62,11 @@ The script supports vocab and vocab encoded data caching as those two things can
 
 **Model Saving:**
 
-Since the goal of the script is to try out various different parameters and datasets, the script can save and load models (vocab, LSTMs and all). The user can choose where to load and save the models. Note that any change to the chatbot object may mess up the saved model, however, there are backups (model weights and vocab pickle files) for each saved model that could be used to reconstruct the model. 
+Since the goal of the script is to try out various different parameters and datasets, the script can save and load models (vocab, LSTMs and all). The user can choose where to load and save the models. Note that any change to the chatbot script may mess up the saved model, however, there are backups (model weights and vocab pickle files) for each saved model that could be used to reconstruct the model. 
+
+**Training Model Recovery:**
+
+This script saves a 'recovery' model in the cache at the end of each epoch during training. If the script were to get interrupted for whatever reason, it can recover its training progress by loading said model and resume training. 
 
 ## User Guide
 **Dependencies:** Python 3.6+, Numpy, Keras, Tensorflow, nltk, spaCy. It is recommended to have Tensorflow work with a GPU since large models will take a considerable amount of time to train (this will require a supported NVIDIA GPU). Also, it is recommended to have around 4 GB of system memory for relatively large models with a reasonable batch size. 
@@ -141,6 +145,64 @@ One could run the script with the following command:
 
 When training, one should get something similar to the following: (if cached files are invalid)
 ```
+Daniels-MacBook-Pro:Seq2Seq-chatbot danielvdm$ python chatbot.py --n_in=10 --n_out=20 --latent_dim=128 --vocab_size=10000 --train_file=Small_Data.json --filter_mode=1 --epoch=500 --batch_size=64 --split=0.35 --verbose
+Using TensorFlow backend.
+Load a saved model? (y/n) n
+Save the newly trained model? (y/n) y
+(Required) Name of newly trained model? Example_Model
+No cached vocab file found.
+Exception encountered when loading vocab assets: FileNotFoundError, [Errno 2] No such file or directory: 'cache/vocab_assets/Small_Data.json (last_mod: 1547701140.2666988).pickle'
+>> Creating vocab assets for 'Small_Data.json' (95 lines of data) <<
+Parsed 95/95 lines of vocab data.Cached vocab file. Vocab size = 10000, Vocab Sig = Small_Data.json (last_mod: 1547701140.2666988)
+__________________________________________________________________________________________________
+Layer (type)                    Output Shape         Param #     Connected to
+==================================================================================================
+input_1 (InputLayer)            (None, None, 232)    0
+__________________________________________________________________________________________________
+input_2 (InputLayer)            (None, None, 232)    0
+__________________________________________________________________________________________________
+lstm_1 (LSTM)                   [(None, 128), (None, 184832      input_1[0][0]
+__________________________________________________________________________________________________
+lstm_2 (LSTM)                   [(None, None, 128),  184832      input_2[0][0]
+                                                                 lstm_1[0][1]
+                                                                 lstm_1[0][2]
+__________________________________________________________________________________________________
+dense_1 (Dense)                 (None, None, 232)    29928       lstm_2[0][0]
+==================================================================================================
+Total params: 399,592
+Trainable params: 399,592
+Non-trainable params: 0
+__________________________________________________________________________________________________
+None
+Defined new model.
+
+>> Vocab Encoding Training Data <<
+Processed 95/95 Question-Answer Pairs.
+Cached vocab encoded training data.
+>> Training on 41 Question-Answer pairs <<
+Epoch: 1/500, Batch: 1/1. 	Training...
+Train on 27 samples, validate on 14 samples
+Epoch 1/1
+27/27 [==============================] - 4s 142ms/step - loss: 5.4266 - val_loss: 5.3929
+Epoch: 2/500, Batch: 1/1. 	Training...
+Train on 27 samples, validate on 14 samples
+Epoch 1/1
+27/27 [==============================] - 0s 5ms/step - loss: 5.3927 - val_loss: 5.3518
+. 
+. 
+.
+Epoch: 499/500, Batch: 1/1. 	Training...
+Train on 27 samples, validate on 14 samples
+Epoch 1/1
+27/27 [==============================] - 0s 5ms/step - loss: 0.2361 - val_loss: 0.2351
+Epoch: 500/500, Batch: 1/1. 	Training...
+Train on 27 samples, validate on 14 samples
+Epoch 1/1
+27/27 [==============================] - 0s 5ms/step - loss: 0.2317 - val_loss: 0.2321
+Finished epoch: 500/500Training Complete.
+Trained on 41 Question-Answer pairs
+Chat Bot ready, type anything to start: (Ctrl + C or type '!EXIT' to stop chatting)
+>
 ```
 
 When loading a model, one should get something similar to the following: (if more than 1 model is saved)
