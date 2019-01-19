@@ -790,7 +790,7 @@ def get_saved_model(directory):
         print(f"'{directory}' is an invalid directory.")
         return None
 
-    saved_models = os.listdir(directory)
+    saved_models = [f for f in os.listdir(directory) if f != '.DS_Store']
     if len(saved_models) == 0:
         print("There are no saved models.")
         return None
