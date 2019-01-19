@@ -249,4 +249,4 @@ The 'small' model parameters that yeilded the best results were: `n_in = 10, n_o
 ## Credits
 This project was written by Daniel Van Der Maden as an Undergraduate Computer Science student at UC Berkeley.
 
-This script originally started off as a project assignment for [David Bamman's](http://people.ischool.berkeley.edu/~dbamman/) Natural Language Processing Course (Info 159/259 - Fa18) at UC Berkeley (with the goal of just creating a seq2seq chatbot). However, memory efficiency changes, caching, model saving, data filtering, and parameter variations were all added at a later time so that one could more easily see how different model variations would perform.
+This script originally started off as a project assignment for [David Bamman's](http://people.ischool.berkeley.edu/~dbamman/) Natural Language Processing Course (Info 159/259 - Fa18) at UC Berkeley (with the goal of just creating a seq2seq chatbot). However, memory efficiency changes, caching, model recovering & saving, data filtering, and parameter variations were all added at a later time so that one could more easily see how different model variations would perform.
