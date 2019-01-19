@@ -88,21 +88,24 @@ The script has various options that are handled by an options parser. To look up
 
 Here is the help message for reference:
 ```
-Usage: chatbot.py [options]
+usage: chatbot.py [-h] [-i N_IN] [-o N_OUT] [-l LATENT_DIM] [-v VOCAB_SIZE]
+                  [-f VOCAB_FILE] [-I] [-N] [-M] [-t TRAIN_FILE]
+                  [-c FILTER_MODE] [-e EPOCH] [-b BATCH_SIZE] [-s SPLIT]
+                  [-m SAVED_MODELS_DIR]
 
-Options:
+optional arguments:
   -h, --help            show this help message and exit
-  -i N_IN, --n_in=N_IN  The number of time steps for the encoder. Default =
+  -i N_IN, --n_in N_IN  The number of time steps for the encoder. Default =
                         10.
-  -o N_OUT, --n_out=N_OUT
+  -o N_OUT, --n_out N_OUT
                         The number of time setps for the decoder. Default =
                         20.
-  -l LATENT_DIM, --latent_dim=LATENT_DIM
-                        The inner dimensionality of the Encoder and Decoder's 
+  -l LATENT_DIM, --latent_dim LATENT_DIM
+                        The inner dimensionality of the Encoder and Decoder's
                         LSTM. Default = 128.
-  -v VOCAB_SIZE, --vocab_size=VOCAB_SIZE
+  -v VOCAB_SIZE, --vocab_size VOCAB_SIZE
                         The size of the vocab of the Chatbot. Default = None
-  -f VOCAB_FILE, --vocab_file=VOCAB_FILE
+  -f VOCAB_FILE, --vocab_file VOCAB_FILE
                         The directory of the JSON file that is used to define
                         the vocab. The 'data' attribute can be either
                         question-answer pairs or just strings/sentences.
@@ -112,27 +115,27 @@ Options:
                         chatbot model. Note that NER adds a considerable
                         amount of complexity in encoding the training data.
   -M, --verbose         Toggles verbose on.
-  -t TRAIN_FILE, --train_file=TRAIN_FILE
+  -t TRAIN_FILE, --train_file TRAIN_FILE
                         The directory of the JSON file that is used to train
                         the model. The 'data' attribute must be a list of
                         question-answer pairs.Default =
                         'Cornell_Movie_Dialogs_Data.json'
-  -c FILTER_MODE, --filter_mode=FILTER_MODE
+  -c FILTER_MODE, --filter_mode FILTER_MODE
                         An integer that dictates the filter imposed of the
                         data. MODES: {0, 1, 2}. Mode 0: Only take Questions
-                        that have n_in number of tokens and only take Answers
+                        that have N_in number of tokens and only take Answers
                         that have n_out number of tokens. Mode 1: All of Mode
                         0 AND Questions must have a '?' token. Mode 2: All of
                         Mode 0 AND Question & Answer must have a '?' token.
                         Default = 0
-  -e EPOCH, --epoch=EPOCH
+  -e EPOCH, --epoch EPOCH
                         The number of epochs for training. Default = 100.
-  -b BATCH_SIZE, --batch_size=BATCH_SIZE
+  -b BATCH_SIZE, --batch_size BATCH_SIZE
                         The batch size for training. Default = 32.
-  -s SPLIT, --split=SPLIT
+  -s SPLIT, --split SPLIT
                         The percentage (float between 0 - 1) of data held out
                         for validation. Default = 0.35
-  -m SAVED_MODELS_DIR, --saved_models_dir=SAVED_MODELS_DIR
+  -m SAVED_MODELS_DIR, --saved_models_dir SAVED_MODELS_DIR
                         The directory for all of the saved (trained) models.
                         Default = 'saved_models'
 ```
@@ -142,7 +145,7 @@ One could run the script with the following command:
 
 `python chatbot.py --n_in=10 --n_out=20 --latent_dim=128 --vocab_size=10000 --train_file=Small_Data.json --filter_mode=1 --epoch=500 --batch_size=64 --split=0.35 --verbose`
 
-When training, one should get something similar to the following: (if cached files are invalid)
+**When training, one should get something similar to the following: (if cached files are invalid)**
 ```
 Daniels-MacBook-Pro:Seq2Seq-chatbot danielvdm$ python chatbot.py --n_in=10 --n_out=20 --latent_dim=128 --vocab_size=10000 --train_file=Small_Data.json --filter_mode=1 --epoch=500 --batch_size=64 --split=0.35 --verbose
 Using TensorFlow backend.
@@ -204,7 +207,7 @@ Chat Bot ready, type anything to start: (Ctrl + C or type '!EXIT' to stop chatti
 >
 ```
 
-When loading a model, one should get something similar to the following: (if more than 1 model is saved)
+**When loading a model, one should get something similar to the following: (if more than 1 model is saved)**
 ```
 Daniels-MacBook-Pro:Seq2Seq-chatbot danielvdm$ python chatbot.py --n_in=10 --n_out=20 --latent_dim=128 --vocab_size=10000 --train_file=Small_Data.json --filter_mode=1 --epoch=500 --batch_size=64 --split=0.35 --verbose
 Using TensorFlow backend.
@@ -221,7 +224,6 @@ Response: are are you doing ?
 
 >^C
 Done Chatting...
-
 ```
 
 ## Movie Script Results
