@@ -220,7 +220,7 @@ Which model would you like to load? (Type out choice below)
 Loaded model: Test
 Chat Bot ready, type anything to start: (Ctrl + C or type '!EXIT' to stop chatting)
 >Hi
-Response: are are you doing ?
+Response: How are you doing ?
 
 >^C
 Done Chatting...
