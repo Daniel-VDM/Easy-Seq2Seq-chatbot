@@ -615,10 +615,15 @@ class ChatBot:
         try:  # Recover model if possible, otherwise setup recovering variables.
             if self.ignore_cache:
                 raise ValueError("Ignoring cache")
+
             model_sig = pickle.load(open('cache/temp_model/sig.pickle', 'rb'))
-            if model_sig['OPTS'] == OPTS and model_sig['repr'] == repr(self):
-                self.encoder.load_weights('cache/temp_model/encoder.h5')
-                self.decoder.load_weights('cache/temp_model/decoder.h5')
+            if not (model_sig['options'] == OPTS
+                    and model_sig['vocab_sig'] == self.vocab_file_sig
+                    and model_sig['train_sig'] == self.train_data_file_sig):
+                raise ValueError("Invalid recovery model.")
+
+            self.encoder.load_weights('cache/temp_model/encoder.h5')
+            self.decoder.load_weights('cache/temp_model/decoder.h5')
             i = model_sig['epoch_count']
             if verbose:
                 print("[!] Recovered model from cache.")
@@ -640,14 +645,16 @@ class ChatBot:
             sys.stdout.write(f"\rFinished epoch: {i+1}/{epoch}")
             sys.stdout.flush()
 
-            pickle.dump({'OPTS': OPTS, 'epoch_count': i, 'repr': repr(self)},
+            pickle.dump({'options': OPTS, 'epoch_count': i,
+                         'vocab_sig': self.vocab_file_sig,
+                         'train_sig': self.train_data_file_sig},
                         open('cache/temp_model/sig.pickle', 'wb'))
             self.encoder.save_weights('cache/temp_model/encoder.h5')
             self.decoder.save_weights('cache/temp_model/decoder.h5')
             i += 1
 
         if verbose:
-            print(f"Training Complete.\nTrained on {len(self._v_encoded_y)} Question-Answer pairs")
+            print(f"\nTraining Complete.\nTrained on {len(self._v_encoded_y)} Question-Answer pairs")
         shutil.rmtree('cache/temp_model')
         return True
 
