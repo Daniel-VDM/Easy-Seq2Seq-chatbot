@@ -622,6 +622,7 @@ class ChatBot:
         else:
             os.mkdir('cache/temp_model')
 
+        # Train the model.
         for ep in range(epoch):
             for X_1, X_2, Y, batch_counter in self.batch_generator(batch_size=batch_size):
                 if verbose:
