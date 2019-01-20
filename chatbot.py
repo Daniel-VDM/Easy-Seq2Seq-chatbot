@@ -19,8 +19,8 @@ NER_NLP = spacy.load('en')
 
 class ChatBot:
 
-    def __init__(self, n_in, n_out, vocab_size, vocab_file, ignore_cache,
-                 ner_enabled, verbose, cache_dir=None):
+    def __init__(self, n_in, n_out, vocab_size, vocab_file,
+                 ignore_cache, ner_enabled, verbose, cache_dir=None):
         self._cache_dir = cache_dir if cache_dir is not None else 'cache'
         if not os.path.exists(self._cache_dir):
             os.makedirs(self._cache_dir)
@@ -86,16 +86,16 @@ class ChatBot:
     @staticmethod
     def load(model_dir, options):
         """
-        :param model_dir: The directory of the saved model. Must contain the
-                          cache used for the instance that is loaded.
+        :param model_dir: The directory of the saved model.
         :param options: The options namespace used for the instance that is loaded.
-        :return: A chatbot object with the loaded model or none if an error occurred.
+        :return: A ChatBot object with the loaded model or none if an error occurred.
         """
-        new_instance = ChatBot(options.n_in, options.n_out, options.vocab_size, options.vocab_file,
+        new_instance = ChatBot(options.n_in, options.n_out, options.vocab_size,
+                               f'{model_dir}/{options.vocab_file}',
                                False, not options.NER_disable, False, f'{model_dir}/cache')
-        new_instance.train(options.train_file, options.filter_mode, options.latent_dim, 0,
-                           options.batch_size, options.split, False)
-        if new_instance.has_valid_vocab_encodings():
+        new_instance.train(f'{model_dir}/{options.train_file}', options.filter_mode,
+                           options.latent_dim, 0, options.batch_size, options.split, False)
+        if new_instance.has_valid_v_encoded_training_data():
             new_instance.encoder.load_weights(f'{model_dir}/encoder.h5')
             new_instance.decoder.load_weights(f'{model_dir}/decoder.h5')
             new_instance.ignore_cache = options.ignore_cache
@@ -165,7 +165,7 @@ class ChatBot:
         return X_1t, X_2t, Y_t, X_1v, X_2v, Y_v
 
     @staticmethod
-    def create_vocab_asset(vocab_file, NER_on, verbose):
+    def create_vocab_assets(vocab_file_path, NER_on, verbose):
         """
         Creates vocab asset from VOCAB_FILE. Note that the VOCAB_FILE is
         expected to come as a JSON file where the vocab data is saved as
@@ -185,7 +185,8 @@ class ChatBot:
 
         Note that vocab tokens are all lower cased.
 
-        :param vocab_file: The path to the JSON vocab file with the vocab data.
+        :param vocab_file_path: The path to the JSON vocab file
+               with the vocab data.
         :param NER_on: Toggle for Name Entity Recognition features.
         :param verbose: Toggle for update messages.
         :return vocab file's assets as a dictionary.
@@ -195,7 +196,7 @@ class ChatBot:
         NER_tokens = set()
         ner_label_tokens = set()
         NER_label_to_token_dict = {}
-        vocab_data = json.load(open(vocab_file))["data"]
+        vocab_data = json.load(open(vocab_file_path))["data"]
 
         def process_for_entities(nlp_entities):
             for entity in nlp_entities:
@@ -225,9 +226,9 @@ class ChatBot:
                 sys.stdout.flush()
 
         if len(vocab_data) == 0:
-            raise ValueError(f"{vocab_file} contains no data.")
+            raise ValueError(f"{vocab_file_path} contains no data.")
 
-        print(f">> Creating vocab assets for '{vocab_file}' ({len(vocab_data)} lines of data) <<")
+        print(f">> Creating vocab assets for '{vocab_file_path}' ({len(vocab_data)} lines of data) <<")
 
         first_vocab_el = vocab_data[0]
         if type(first_vocab_el) == str:
@@ -248,7 +249,7 @@ class ChatBot:
         vocab_tokens = sorted(list(tok_freq.keys()), key=lambda w: tok_freq.get(w, 0), reverse=True)
 
         vocab_assets = {
-            'signature': f"{vocab_file} (last_mod: {os.path.getmtime(vocab_file)})",
+            'signature': f"{vocab_file_path} (last_mod: {os.path.getmtime(vocab_file_path)})",
             'vocab_tokens': vocab_tokens,
             'NER_tokens': NER_tokens,
             'NER_label_to_token_dict': NER_label_to_token_dict
@@ -257,8 +258,8 @@ class ChatBot:
 
     def cache_id(self):
         """
-        Returns an integer that depends on the last modified times
-        of the files for this instance's cache.
+        :return: an integer that depends on the last modified times
+                 of the files in this instance's cache.
         """
         lst = [int(os.path.getmtime(f"{self._cache_dir}/{f}")*1e12)
                for f in os.listdir(self._cache_dir) if f[-7:] == '.pickle']
@@ -286,7 +287,7 @@ class ChatBot:
         except (FileNotFoundError, ValueError, KeyError) as e:
             if verbose:
                 print(f"Exception encountered when loading vocab assets: {type(e).__name__}, {e}")
-            vocab_assets = ChatBot.create_vocab_asset(self.vocab_file, self.ner_enabled, verbose=verbose)
+            vocab_assets = ChatBot.create_vocab_assets(self.vocab_file, self.ner_enabled, verbose=verbose)
             pickle.dump(vocab_assets, open(vocab_asset_cache_file, 'wb'))
 
         # Hardcoded special tokens. DO NOT change the order of PADD, START and UNK.
@@ -438,6 +439,7 @@ class ChatBot:
         self._v_encoded_x1, self._v_encoded_x2, self._v_encoded_y = encoded_x1, encoded_x2, encoded_y
         self._trained_QA_pairs = trained_QA_pairs
         self._v_encoded_data_dict = {
+            'filter_mode': self.train_data_filter_mode,
             'x1': encoded_x1, 'x2': encoded_x2, 'y': encoded_y, 'qa_pairs': trained_QA_pairs
         }
         pickle.dump(self._v_encoded_data_dict, open(f"{self._cache_dir}/v_encoded_data_dict.pickle", 'wb'))
@@ -497,17 +499,17 @@ class ChatBot:
             batch_num += 1
             yield X_1, X_2, Y, f"{batch_num}/{total_batch_count}"
 
-    def has_valid_vocab_encodings(self):
+    def has_valid_v_encoded_training_data(self):
         """
-        Check if the current instance has vocab encodings that uses
-        this instance's vocab.
+        Check if the current instance has vocab encoded training data that
+        uses this instance's vocab.
 
         An encoding is valid if this instance's vocab was used for this
         instance's encodings.
 
-        The validation uses an idea similar to the bloom filter.
-        The 'hash' portion of this bloom filter idea is solely
-        dependent on numpy's shuffle of the vocab.
+        The validation uses an idea similar to the bloom filter for an
+        efficient check. Note that the 'hash' portion of this bloom
+        filter idea is solely dependent on numpy's shuffle of the vocab.
 
         Note that there is a slim chance of a false positive.
         This chance can be lowered by increasing N.
@@ -516,6 +518,8 @@ class ChatBot:
                 or not self._v_encoded_y or not self._trained_QA_pairs:
             return False
         if not (len(self._v_encoded_x1) == len(self._v_encoded_x2) == len(self._v_encoded_y)):
+            return False
+        if self.train_data_filter_mode != self._v_encoded_data_dict["filter_mode"]:
             return False
 
         N = 30
@@ -542,32 +546,13 @@ class ChatBot:
         Private method used in the train method.
 
         It loads the encoded training data from cache if one exits.
-
-        Has legacy support for older style of v_encodings but assumes
-        that the 4 legacy files were filtered in the same mode and sourced
-        from the same file (if not 'has_valid_vocab_encodings' will catch it).
         """
         if self.ignore_cache:
             return False
 
         v_encoded_data_dir = f"{self._cache_dir}/v_encoded_data_dict.pickle"
         if not self._v_encoded_data_dict and os.path.isfile(v_encoded_data_dir):
-                self._v_encoded_data_dict = pickle.load(open(v_encoded_data_dir, 'rb'))
-        elif not self._v_encoded_data_dict and os.path.isfile(f"{self._cache_dir}/x1.pickle") \
-                and os.path.isfile(f"{self._cache_dir}/x2.pickle") \
-                and os.path.isfile(f"{self._cache_dir}/y.pickle") \
-                and os.path.isfile(f"{self._cache_dir}/trained_QA_pairs.pickle"):  # Legacy support & update.
-            self._v_encoded_data_dict = {
-                'x1': pickle.load(open(f"{self._cache_dir}/x1.pickle", 'rb'))['data'],
-                'x2': pickle.load(open(f"{self._cache_dir}/x2.pickle", 'rb'))['data'],
-                'y': pickle.load(open(f"{self._cache_dir}/y.pickle", 'rb'))['data'],
-                'qa_pairs': pickle.load(open(f"{self._cache_dir}/trained_QA_pairs.pickle", 'rb'))['data']
-            }
-            pickle.dump(self._v_encoded_data_dict, open(v_encoded_data_dir, 'wb'))
-            os.remove(f"{self._cache_dir}/x1.pickle")
-            os.remove(f"{self._cache_dir}/x2.pickle")
-            os.remove(f"{self._cache_dir}/y.pickle")
-            os.remove(f"{self._cache_dir}/trained_QA_pairs.pickle")
+            self._v_encoded_data_dict = pickle.load(open(v_encoded_data_dir, 'rb'))
         else:
             return False
 
@@ -622,7 +607,7 @@ class ChatBot:
 
         # Load cached training data encodings.
         self._load_cached_v_encoded_train_data()
-        if not self.has_valid_vocab_encodings():
+        if not self.has_valid_v_encoded_training_data():
             data_pairs = json.load(open(self.train_data_file))["data"]
             self._create_and_cache_vocab_encoding(training_data_pairs=data_pairs, verbose=verbose)
         elif verbose:
@@ -630,7 +615,7 @@ class ChatBot:
 
         self.train_cache_id = self.cache_id()
 
-        try:  # Recover model if possible, otherwise setup recovering variables.
+        try:  # Recover model if possible.
             if self.ignore_cache:
                 raise ValueError("Ignoring cache")
             recovery_sig = pickle.load(open(f'{self._cache_dir}/temp_model/sig.pickle', 'rb'))
@@ -748,22 +733,27 @@ class ChatBot:
         self.encoder.save_weights(f"{directory}/encoder.h5")
         self.decoder.save_weights(f"{directory}/decoder.h5")
 
+        curr_train_file_sig = f"{self.train_data_file} " \
+            f"(last_mod: {os.path.getmtime(self.train_data_file)})"
+        if self.train_data_file_sig == curr_train_file_sig:
+            shutil.copyfile(self.train_data_file, f"{directory}/{self.train_data_file}")
+
+        curr_vocab_file_sig = f"{self.vocab_file} " \
+            f"(last_mod: {os.path.getmtime(self.vocab_file)})"
+        if self.vocab_file_sig == curr_vocab_file_sig \
+                and not os.path.exists(f"{directory}/{self.vocab_file}"):
+            shutil.copyfile(self.vocab_file, f"{directory}/{self.vocab_file}")
+
         if not os.path.exists(f"{directory}/cache"):
             os.mkdir(f"{directory}/cache")
         with open(f"{directory}/cache/v_encoded_data_dict.pickle", 'wb') as f:
             pickle.dump(self._v_encoded_data_dict, f)
         with open(f"{directory}/cache/vocab.pickle", 'wb') as f:
+            new_vocab_sig = f"{self.vocab_file} (last_mod: {os.path.getmtime(self.vocab_file)})"
+            old_vocab_sig = self.vocab_data_dict["signature"]
+            self.vocab_data_dict["signature"] = new_vocab_sig  # different but valid sig from file copy.
             pickle.dump(self.vocab_data_dict, f)
-
-        curr_train_file_sig = f"{self.train_data_file} " \
-                              f"(last_mod: {os.path.getmtime(self.train_data_file)})"
-        if self.train_data_file_sig == curr_train_file_sig:
-            shutil.copyfile(self.train_data_file, f"{directory}/[Train]{self.train_data_file}")
-
-        curr_vocab_file_sig = f"{self.vocab_file} " \
-                              f"(last_mod: {os.path.getmtime(self.vocab_file)})"
-        if self.vocab_file_sig == curr_vocab_file_sig:
-            shutil.copyfile(self.vocab_file, f"{directory}/[Vocab]{self.vocab_file}")
+            self.vocab_data_dict["signature"] = old_vocab_sig
 
         print(f"\nSaved the trained model to: './{directory}'.")
         return True
@@ -815,6 +805,7 @@ def get_options():
     options = opts.parse_args()
     if options.vocab_file is None:
         options.vocab_file = options.train_file
+    pickle.dump(options, open("options.pickle", 'wb'))
     return options
 
 
