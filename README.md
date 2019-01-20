@@ -143,7 +143,7 @@ optional arguments:
 ## Sample Execution
 One could run the script with the following command: 
 
-`python chatbot.py --n_in=10 --n_out=20 --latent_dim=128 --vocab_size=10000 --train_file_path=Small_Data.json --filter_mode=1 --epoch=500 --batch_size=64 --split=0.35 --verbose`
+`python chatbot.py --n_in=20 --n_out=20 --latent_dim=128 --vocab_size=10000 --train_file_path=Small_Data.json --filter_mode=1 --epoch=500 --batch_size=32 --split=0.35 --verbose`
 
 **When training, one should get something similar to the following: (if cached files are invalid)**
 ```
