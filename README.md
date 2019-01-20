@@ -209,7 +209,7 @@ Chat Bot ready, type anything to start: (Ctrl + C or type '!EXIT' to stop chatti
 
 **When loading a model, one should get something similar to the following: (if more than 1 model is saved)**
 ```
-Daniels-MacBook-Pro:Seq2Seq-chatbot danielvdm$ python chatbot.py --n_in=10 --n_out=20 --latent_dim=128 --vocab_size=10000 --train_file=Small_Data.json --filter_mode=1 --epoch=500 --batch_size=64 --split=0.35 --verbose
+Daniels-MacBook-Pro:Seq2Seq-chatbot danielvdm$ python chatbot.py
 Using TensorFlow backend.
 Load a saved model? (y/n) y
 Which model would you like to load? (Type out choice below)
@@ -220,7 +220,7 @@ Which model would you like to load? (Type out choice below)
 Loaded model: Test
 Chat Bot ready, type anything to start: (Ctrl + C or type '!EXIT' to stop chatting)
 >Hi
-Response: How are you doing ?
+Response: how are you doing ?
 
 >^C
 Done Chatting...
