@@ -205,7 +205,7 @@ Finished epoch: 500/500
 Training Complete.
 Trained on 41 Question-Answer pairs
 
-Saved the trained model to: 'saved_models/Example_Model'.
+Saved the trained model to: './saved_models/Example_Model'.
 Chat-bot ready, type anything to start: (Ctrl + C or type '!EXIT' to stop chatting)
 >Hi?
 Response: how are you ?
