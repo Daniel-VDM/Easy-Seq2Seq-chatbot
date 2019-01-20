@@ -105,7 +105,7 @@ optional arguments:
                         LSTM. Default = 128.
   -v VOCAB_SIZE, --vocab_size VOCAB_SIZE
                         The size of the vocab of the Chatbot. Default = None
-  -f VOCAB_FILE, --vocab_file VOCAB_FILE
+  -f VOCAB_FILE, --vocab_file_path VOCAB_FILE
                         The directory of the JSON file that is used to define
                         the vocab. The 'data' attribute can be either
                         question-answer pairs or just strings/sentences.
@@ -115,7 +115,7 @@ optional arguments:
                         chatbot model. Note that NER adds a considerable
                         amount of complexity in encoding the training data.
   -M, --verbose         Toggles verbose on.
-  -t TRAIN_FILE, --train_file TRAIN_FILE
+  -t TRAIN_FILE, --train_file_path TRAIN_FILE
                         The directory of the JSON file that is used to train
                         the model. The 'data' attribute must be a list of
                         question-answer pairs.Default =
@@ -143,11 +143,11 @@ optional arguments:
 ## Sample Execution
 One could run the script with the following command: 
 
-`python chatbot.py --n_in=10 --n_out=20 --latent_dim=128 --vocab_size=10000 --train_file=Small_Data.json --filter_mode=1 --epoch=500 --batch_size=64 --split=0.35 --verbose`
+`python chatbot.py --n_in=20 --n_out=20 --latent_dim=128 --vocab_size=10000 --train_file_path=Small_Data.json --filter_mode=1 --epoch=600 --batch_size=32 --split=0.35 --verbose`
 
 **When training, one should get something similar to the following: (if cached files are invalid)**
 ```
-Daniels-MacBook-Pro:Seq2Seq-chatbot danielvdm$ python chatbot.py --n_in=10 --n_out=20 --latent_dim=128 --vocab_size=10000 --train_file=Small_Data.json --filter_mode=1 --epoch=500 --batch_size=64 --split=0.35 --verbose
+Daniels-MacBook-Pro:Seq2Seq-chatbot danielvdm$ python chatbot.py --n_in=10 --n_out=20 --latent_dim=128 --vocab_size=10000 --train_file_path=Small_Data.json --filter_mode=1 --epoch=500 --batch_size=64 --split=0.35 --verbose
 Using TensorFlow backend.
 Load a saved model? (y/n) n
 Save the newly trained model? (y/n) y
