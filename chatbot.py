@@ -634,6 +634,8 @@ class ChatBot:
         if epoch > 0:
             print(f">> Training on {len(self._v_encoded_y)} Question-Answer pairs for {epoch} epochs <<")
 
+        os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'  # Needed for Mac-OS.
+
         # Train the model.
         while i < epoch:
             for X_1, X_2, Y, batch_counter in self.batch_generator(batch_size=batch_size):
