@@ -33,6 +33,7 @@ class ChatBot:
         self.train_data_file = None
         self.train_data_file_sig = None
         self.train_data_filter_mode = 0
+        self.train_cache_id = self.cache_id()
         self.model, self.encoder, self.decoder = None, None, None
 
         # Vocab creation.
@@ -85,8 +86,8 @@ class ChatBot:
         """
         :param model_dir: The directory of the saved model. Must contain the
                           cache used for the instance that is loaded.
-        :param options: options namespace used for the instance that is loaded.
-        :return: A chatbot object with the loaded model. Or none if an error occurred.
+        :param options: The options namespace used for the instance that is loaded.
+        :return: A chatbot object with the loaded model or none if an error occurred.
         """
         new_instance = ChatBot(options.n_in, options.n_out, options.vocab_size, options.vocab_file,
                                False, not options.NER_disable, False, f'{model_dir}/cache')
@@ -95,6 +96,8 @@ class ChatBot:
         if new_instance.has_valid_vocab_encodings():
             new_instance.encoder.load_weights(f'{model_dir}/encoder.h5')
             new_instance.decoder.load_weights(f'{model_dir}/decoder.h5')
+            new_instance.ignore_cache = options.ignore_cached
+            new_instance._cache_dir = 'cache'
             return new_instance
         else:
             print(f"model: {model_dir} cannot be loaded.")
@@ -249,6 +252,15 @@ class ChatBot:
             'NER_label_to_token_dict': NER_label_to_token_dict
         }
         return vocab_assets
+
+    def cache_id(self):
+        """
+        Returns an integer that depends on the last modified times
+        of the files for this instance's cache.
+        """
+        lst = [os.path.getmtime(f"{self._cache_dir}/f")
+               for f in os.listdir(self._cache_dir) if f[-7:] == '.pickle']
+        return sum(lst)
 
     def _create_and_cache_vocab(self, vocab_size, verbose):
         """
@@ -611,22 +623,24 @@ class ChatBot:
         elif verbose:
             print("[!] Using cached training data encodings.")
 
+        self.train_cache_id = self.cache_id()
+
         try:  # Recover model if possible, otherwise setup recovering variables.
             if self.ignore_cache:
                 raise ValueError("Ignoring cache")
-            model_sig = pickle.load(open(f'{self._cache_dir}/temp_model/sig.pickle', 'rb'))
-            if model_sig['OPTIONS'] == OPTIONS and model_sig['repr'] == repr(self):
+            recovery_sig = pickle.load(open(f'{self._cache_dir}/temp_model/sig.pickle', 'rb'))
+            if recovery_sig['OPTIONS'] == OPTIONS and recovery_sig['cache_id'] == self.train_cache_id:
                 self.encoder.load_weights(f'{self._cache_dir}/temp_model/encoder.h5')
                 self.decoder.load_weights(f'{self._cache_dir}/temp_model/decoder.h5')
-            i = model_sig['epoch_count']
+            i = recovery_sig['epoch_count']
             if verbose:
                 print("[!] Recovered model from cache.")
         except (FileNotFoundError, KeyError, ValueError):
             os.makedirs(f'{self._cache_dir}/temp_model', exist_ok=True)
             i = 0
 
-        if not epoch:  # Early termination if there is nothing to train.
-            return True
+        if epoch > 0:
+            print(f">> Training on {len(self._v_encoded_y)} Question-Answer pairs <<")
 
         # Train the model.
         while i < epoch:
@@ -642,7 +656,7 @@ class ChatBot:
             sys.stdout.write(f"\rFinished epoch: {i+1}/{epoch}")
             sys.stdout.flush()
 
-            pickle.dump({'OPTIONS': OPTIONS, 'epoch_count': i, 'repr': repr(self)},
+            pickle.dump({'OPTIONS': OPTIONS, 'epoch_count': i, 'cache_id': self.train_cache_id},
                         open(f'{self._cache_dir}/temp_model/sig.pickle', 'wb'))
             self.encoder.save_weights(f'{self._cache_dir}/temp_model/encoder.h5')
             self.decoder.save_weights(f'{self._cache_dir}/temp_model/decoder.h5')
@@ -751,7 +765,7 @@ def get_options():
                       help="The directory of the JSON file that is used to define the vocab. "
                            "The 'data' attribute can be either question-answer pairs or just strings/sentences. "
                            "Default = whatever the train_file is.")
-    opts.add_argument("-I", '--ignore_cache', action="store_true", dest="ignore_cached",
+    opts.add_argument("-I", '--ignore_cache', action="store_true", dest="ignore_cache",
                       help="Forces the script to ignore the cached files.")
     opts.add_argument("-N", '--NER_disable', action="store_true", dest="NER_disable",
                       help="Turns off Name Entity Recognition as part of the chatbot model. "
@@ -846,7 +860,7 @@ if __name__ == "__main__":
             new_model_name = input()
 
         chat_bot = ChatBot(OPTIONS.n_in, OPTIONS.n_out, OPTIONS.vocab_size, OPTIONS.vocab_file,
-                           OPTIONS.ignore_cached, not OPTIONS.NER_disable, OPTIONS.verbose)
+                           OPTIONS.ignore_cache, not OPTIONS.NER_disable, OPTIONS.verbose)
         chat_bot.train(OPTIONS.train_file, OPTIONS.filter_mode, OPTIONS.latent_dim, OPTIONS.epoch,
                        OPTIONS.batch_size, OPTIONS.split, OPTIONS.verbose)
 
