@@ -244,7 +244,7 @@ The 'small' model saved in this repo was trained on some handwritten [test data]
 
 The 'large' model parameters that yielded the best result were ... **TBD, still training**
 
-The 'small' model parameters that yeilded the best results were: `n_in = 10, n_out = 20, Latent_Dim = 128, Vocab_Size = None, Epoch = 500, Batch_Size = 32, Split = 0.35`. The model ended up with a held out loss of approximatly 0.05.
+The 'small' model parameters that yeilded the best results were: `n_in = 10, n_out = 20, Latent_Dim = 128, Vocab_Size = None, Epoch = 600, Batch_Size = 32, Split = 0.35, Filter_Mode = 1`. The model ended up with a held out loss of approximatly 0.05.
 
 **Sample Conversations:**
 
