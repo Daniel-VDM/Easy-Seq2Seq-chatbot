@@ -47,10 +47,7 @@ class ChatBot:
                         and len(self.vocab_data_dict["token_to_id"]) != vocab_size:
                     raise ValueError(f"Cached vocab size does not match.")
                 if self.vocab_file_sig != self.vocab_data_dict["signature"]:
-                    raise ValueError(f"Cached vocab signature does not match given vocab file.")
-                if self.ner_enabled and ("NER_tokens" not in self.vocab_data_dict.keys()
-                                         or "NER_label_to_token_dict" not in self.vocab_data_dict.keys()):
-                    raise ValueError("Cached vocab does not contain NER data.")
+                    raise ValueError(f"Cached vocab file does not match.")
                 if verbose:
                     print("[!] Using cached vocab.")
             except Exception as e:
