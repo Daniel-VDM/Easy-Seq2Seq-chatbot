@@ -38,7 +38,7 @@ class ChatBot:
         self.model, self.encoder, self.decoder = None, None, None
 
         # Vocab creation.
-        if os.path.isfile("cache/vocab.pickle") and not ignore_cache:
+        if os.path.isfile(f"{self._cache_dir}/vocab.pickle") and not ignore_cache:
             try:
                 self.vocab_data_dict = pickle.load(open(f"{self._cache_dir}/vocab.pickle", 'rb'))
                 if len(self.vocab_data_dict["token_to_id"]) != len(self.vocab_data_dict["token_to_id"]):
