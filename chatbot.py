@@ -740,20 +740,23 @@ class ChatBot:
 
         curr_vocab_file_sig = f"{self.vocab_file} " \
             f"(last_mod: {os.path.getmtime(self.vocab_file)})"
-        if self.vocab_file_sig == curr_vocab_file_sig \
-                and not os.path.exists(f"{directory}/{self.vocab_file}"):
-            shutil.copyfile(self.vocab_file, f"{directory}/{self.vocab_file}")
+        with f"{directory}/{self.vocab_file}" as path:
+            if self.vocab_file_sig == curr_vocab_file_sig and not os.path.exists(path):
+                shutil.copyfile(self.vocab_file, path)
 
         if not os.path.exists(f"{directory}/cache"):
             os.mkdir(f"{directory}/cache")
+
         with open(f"{directory}/cache/v_encoded_data_dict.pickle", 'wb') as f:
             pickle.dump(self._v_encoded_data_dict, f)
+
+        with f"{directory}/{self.vocab_file}" as path:
+            new_vocab_sig = f"{path} (last_mod: {os.path.getmtime(path)})"
+        old_vocab_sig = self.vocab_data_dict["signature"]
+        self.vocab_data_dict["signature"] = new_vocab_sig  # new valid sig from vocab file copy above.
         with open(f"{directory}/cache/vocab.pickle", 'wb') as f:
-            new_vocab_sig = f"{self.vocab_file} (last_mod: {os.path.getmtime(self.vocab_file)})"
-            old_vocab_sig = self.vocab_data_dict["signature"]
-            self.vocab_data_dict["signature"] = new_vocab_sig  # different but valid sig from file copy.
             pickle.dump(self.vocab_data_dict, f)
-            self.vocab_data_dict["signature"] = old_vocab_sig
+        self.vocab_data_dict["signature"] = old_vocab_sig
 
         print(f"\nSaved the trained model to: './{directory}'.")
         return True
