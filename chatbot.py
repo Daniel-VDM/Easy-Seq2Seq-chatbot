@@ -763,7 +763,7 @@ class ChatBot:
         if self.vocab_file_sig == curr_vocab_file_sig:
             shutil.copyfile(self.vocab_file, f"{directory}/[Vocab]{self.vocab_file}")
 
-        print(f"\nSaved the trained model to: '{directory}'.")
+        print(f"\nSaved the trained model to: './{directory}'.")
         return True
 
 
