@@ -740,9 +740,9 @@ class ChatBot:
 
         curr_vocab_file_sig = f"{self.vocab_file} " \
             f"(last_mod: {os.path.getmtime(self.vocab_file)})"
-        with f"{directory}/{self.vocab_file}" as path:
-            if self.vocab_file_sig == curr_vocab_file_sig and not os.path.exists(path):
-                shutil.copyfile(self.vocab_file, path)
+        new_vocab_path = f"{directory}/{self.vocab_file}"
+        if self.vocab_file_sig == curr_vocab_file_sig and not os.path.exists(new_vocab_path):
+            shutil.copyfile(self.vocab_file, new_vocab_path)
 
         if not os.path.exists(f"{directory}/cache"):
             os.mkdir(f"{directory}/cache")
@@ -750,8 +750,7 @@ class ChatBot:
         with open(f"{directory}/cache/v_encoded_data_dict.pickle", 'wb') as f:
             pickle.dump(self._v_encoded_data_dict, f)
 
-        with f"{directory}/{self.vocab_file}" as path:
-            new_vocab_sig = f"{path} (last_mod: {os.path.getmtime(path)})"
+        new_vocab_sig = f"{new_vocab_path} (last_mod: {os.path.getmtime(new_vocab_path)})"
         old_vocab_sig = self.vocab_data_dict["signature"]
         self.vocab_data_dict["signature"] = new_vocab_sig  # new valid sig from vocab file copy above.
         with open(f"{directory}/cache/vocab.pickle", 'wb') as f:
@@ -808,7 +807,6 @@ def get_options():
     options = opts.parse_args()
     if options.vocab_file is None:
         options.vocab_file = options.train_file
-    pickle.dump(options, open("options.pickle", 'wb'))
     return options
 
 
