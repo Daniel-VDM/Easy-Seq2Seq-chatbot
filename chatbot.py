@@ -19,7 +19,8 @@ NER_NLP = spacy.load('en')
 
 class ChatBot:
 
-    def __init__(self, n_in, n_out, vocab_size, vocab_file, ignore_cache, ner_enabled, verbose, cache_dir=None):
+    def __init__(self, n_in, n_out, vocab_size, vocab_file, ignore_cache,
+                 ner_enabled, verbose, cache_dir=None):
         self._cache_dir = cache_dir if cache_dir is not None else 'cache'
         if not os.path.exists(self._cache_dir):
             os.makedirs(self._cache_dir)
@@ -75,8 +76,8 @@ class ChatBot:
         self._v_encoded_data_dict = {}
 
     def __repr__(self):
-        return f"<ChatBot Instance: Vocab Size={self.vocab_size}, n_in={self.n_in}, n_out={self.n_out}," \
-               f" Vocab File={self.vocab_file_sig}, NER={self.ner_enabled}," \
+        return f"<ChatBot Instance: Vocab Size={self.vocab_size}, n_in={self.n_in}, " \
+               f"n_out={self.n_out}, Vocab File={self.vocab_file_sig}, NER={self.ner_enabled}," \
                f" Training File={self.train_data_file_sig}, Filter Mode={self.train_data_filter_mode}>"
 
     def __bool__(self):
@@ -289,7 +290,8 @@ class ChatBot:
             pickle.dump(vocab_assets, open(vocab_asset_cache_file, 'wb'))
 
         # Hardcoded special tokens. DO NOT change the order of PADD, START and UNK.
-        special_tokens = ["<PADD>", "<START>", "<UNK>"] + list(vocab_assets['NER_label_to_token_dict'].keys())
+        special_tokens = ["<PADD>", "<START>", "<UNK>"] \
+                         + list(vocab_assets['NER_label_to_token_dict'].keys())
         vocab_tokens = vocab_assets['vocab_tokens']
         if vocab_size is not None:
             vocab_tokens = vocab_tokens[:vocab_size - len(special_tokens)]
@@ -779,8 +781,8 @@ def get_options():
                       help='The size of the vocab of the Chatbot. Default = None')
     opts.add_argument('-f', '--vocab_file', dest='vocab_file', type=str, default=None,
                       help="The directory of the JSON file that is used to define the vocab. "
-                           "The 'data' attribute can be either question-answer pairs or just strings/sentences. "
-                           "Default = whatever the train_file is.")
+                           "The 'data' attribute can be either question-answer pairs or just "
+                           "strings/sentences. Default = whatever the train_file is.")
     opts.add_argument("-I", '--ignore_cache', action="store_true", dest="ignore_cache",
                       help="Forces the script to ignore the cached files.")
     opts.add_argument("-N", '--NER_disable', action="store_true", dest="NER_disable",
@@ -789,7 +791,8 @@ def get_options():
                            "the training data.")
     opts.add_argument("-M", '--verbose', action="store_true", dest="verbose",
                       help="Toggles verbose on.")
-    opts.add_argument('-t', '--train_file', dest='train_file', type=str, default="Cornell_Movie_Dialogs_Data.json",
+    opts.add_argument('-t', '--train_file', dest='train_file', type=str,
+                      default="Cornell_Movie_Dialogs_Data.json",
                       help="The directory of the JSON file that is used to train the model. "
                            "The 'data' attribute must be a list of question-answer pairs."
                            "Default = 'Cornell_Movie_Dialogs_Data.json'")
