@@ -193,18 +193,25 @@ Epoch 1/1
 . 
 . 
 .
-Epoch: 499/500, Batch: 1/1. 	Training...
+Epoch: 499/500, Batch: 1/1.     Training...
 Train on 27 samples, validate on 14 samples
 Epoch 1/1
-27/27 [==============================] - 0s 5ms/step - loss: 0.2361 - val_loss: 0.2351
-Epoch: 500/500, Batch: 1/1. 	Training...
+27/27 [==============================] - 0s 5ms/step - loss: 0.2527 - val_loss: 0.2114
+Epoch: 500/500, Batch: 1/1.     Training...
 Train on 27 samples, validate on 14 samples
 Epoch 1/1
-27/27 [==============================] - 0s 5ms/step - loss: 0.2317 - val_loss: 0.2321
-Finished epoch: 500/500Training Complete.
+27/27 [==============================] - 0s 5ms/step - loss: 0.2215 - val_loss: 0.2687
+Finished epoch: 500/500
+Training Complete.
 Trained on 41 Question-Answer pairs
-Chat Bot ready, type anything to start: (Ctrl + C or type '!EXIT' to stop chatting)
->
+
+Saved the trained model to: 'saved_models/Example_Model'.
+Chat-bot ready, type anything to start: (Ctrl + C or type '!EXIT' to stop chatting)
+>Hi?
+Response: how are you ?
+
+>^C
+Done Chatting...
 ```
 
 **When loading a model, one should get something similar to the following: (if more than 1 model is saved)**
@@ -214,13 +221,13 @@ Using TensorFlow backend.
 Load a saved model? (y/n) y
 Which model would you like to load? (Type out choice below)
   List of saved models:
-	['Test', 'Test2']
->Test
+        ['Test', 'Test2', 'Example_Model']
+>Example_Model
 
-Loaded model: Test
-Chat Bot ready, type anything to start: (Ctrl + C or type '!EXIT' to stop chatting)
->Hi
-Response: how are you doing ?
+Loaded model: Example_Model
+Chat-bot ready, type anything to start: (Ctrl + C or type '!EXIT' to stop chatting)
+>Hi?
+Response: how are you ?
 
 >^C
 Done Chatting...
