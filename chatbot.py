@@ -765,7 +765,7 @@ def get_options():
                       help="The inner dimensionality of the Encoder and Decoder's LSTM. Default = 128.")
     opts.add_argument('-v', '--vocab_size', dest='vocab_size', type=int, default=None,
                       help='The size of the vocab of the Chatbot. Default = None')
-    opts.add_argument('-f', '--vocab_file', dest='vocab_file', type=str, default=None,
+    opts.add_argument('-f', '--vocab_file_path', dest='vocab_file', type=str, default=None,
                       help="The directory of the JSON file that is used to define the vocab. "
                            "The 'data' attribute can be either question-answer pairs or just "
                            "strings/sentences. Default = whatever the train_file is.")
@@ -777,7 +777,7 @@ def get_options():
                            "the training data.")
     opts.add_argument("-M", '--verbose', action="store_true", dest="verbose",
                       help="Toggles verbose on.")
-    opts.add_argument('-t', '--train_file', dest='train_file', type=str,
+    opts.add_argument('-t', '--train_file_path', dest='train_file', type=str,
                       default="Cornell_Movie_Dialogs_Data.json",
                       help="The directory of the JSON file that is used to train the model. "
                            "The 'data' attribute must be a list of question-answer pairs."
