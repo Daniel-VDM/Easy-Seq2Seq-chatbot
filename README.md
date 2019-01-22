@@ -5,7 +5,7 @@ An implementation of a chatbot that uses a sequence to sequence (seq2seq) model 
 **Indented Usage**: With this script, one could try out different data sets and model parameters to see how the resulting models/chatbots differ.
 
 **Script Summary**:
-The goal of the script was to provide an easier way to vary various parameters regarding the seq2seq model (such as encoder & decoder recurrent steps, latent dimensions, training epochs, etc..). Furthermore, the script uses a more memory friendly way of training the seq2seq model, which allows the user to train models with large datasets of question-answer pairs. Also, the script has some caching implemented since "preparing" the training data takes a long time for large datasets. Lastly, the script can save models once it's trained, as well as load trained models to chat with.
+The goal of the script was to provide an easier way to vary various parameters regarding the seq2seq model (such as encoder & decoder recurrent steps, latent dimensions, training epochs, etc..). Furthermore, the script uses a more memory friendly way of training the seq2seq model, which allows the user to train models with large datasets of question-answer pairs. Also, the script has some caching implemented since "preparing" the training data takes a long time for large datasets. Lastly4he script can save models once it's trained, as well as load trained models to chat with.
 
 ## Model Explanation
 <p align="center">
@@ -68,7 +68,7 @@ This script saves a 'recovery' model in the cache at the end of each epoch durin
 Since the goal of the script is to try out various different parameters and datasets, the script can save and load models (vocab, LSTMs and all). The user can choose where to load and save the models. Note that any change to the chatbot script may mess up the saved model, however, there are backups (model weights and vocab pickle files) for each saved model that could be used to reconstruct the model. 
 
 ## User Guide
-**Dependencies:** Python 3.6+, Numpy, Keras, Tensorflow, nltk, spaCy. It is recommended to have Tensorflow (or whatever Keras backend) work with a GPU since large models will take a considerable amount of time to train (this will require a supported NVIDIA GPU). Also, it is recommended to have around 4 GB of system memory for relatively large models with a reasonable batch size. 
+**Dependencies:** Python 3.6+, Numpy, Keras, Tensorflow, nltk, spaCy. It is recommended to have Tensorflow (or whatever Keras backend) work with a GPU since large models will take a considerable amount of time to train (this will require a supported NVIDIA GPU). Also, it is recommended to have around 2 GB of system memory for relatively large models with a reasonable vocab and batch size. 
 
 ### Data & Vocab JSON file spec
 The Data and Vocab file must be a JSON file and **both** have the following attributes:
