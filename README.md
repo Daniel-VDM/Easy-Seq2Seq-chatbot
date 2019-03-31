@@ -255,12 +255,10 @@ The 'small' model parameters that yeilded the best results were: `n_in = 20, n_o
 The 'large' dataset that one could use to train a model was created from the [Cornell's Movie Dialogs dataset](https://www.cs.cornell.edu/~cristian/Cornell_Movie-Dialogs_Corpus.html). Said dataset came as a CSV file with 5 columns: LineID, characterID, movieID, character name and text. When converting the CSV file to the JSON file for the script, the following filters were applied: First, it only considers rows where the text is 20 tokens or less. Next, for every row `i` that passes said first filter, the text of row `i` was a question and text of row `i+1` was the respective answer so long as the movieIDs were the same, characterIDs were different and LineIDs were consecutive.
 
 **Important Note regarding the included Large Dataset:**
-
-The large data set will take some time to train, but I have gotten similar results to the small model using only 250 epochs, 64 Batch Size, and Filter_Mode = 1. 
+> The large data set will take some time to train, but I have gotten similar results to the small model using only 250 epochs, 64 Batch Size, and Filter_Mode = 1. 
 
 *Personal Note:* 
-
-I have not had the time & resources (as of the time of writing this readme) to try out different training parameters for the included 'large' data set to see which parameters yield the best model for said data set. However, that task is on my list of things to do over the summer of '19. But ultimately, the goal was to create a moderately easy and efficient tool to quickly train a Seq2Seq model on different data sets. 
+> I have not had the time & resources (as of the time of writing this readme) to try out different training parameters for the included 'large' data set to see which parameters yield the best model for said data set. However, that task is on my list of things to do over the summer of '19. But ultimately, the goal was to create a moderately easy and efficient tool to quickly train a Seq2Seq model on different data sets. 
 
 ## Credits
 This project was written by Daniel Van Der Maden as an Undergraduate Computer Science student at UC Berkeley.
