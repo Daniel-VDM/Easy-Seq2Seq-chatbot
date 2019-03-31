@@ -258,7 +258,7 @@ The 'large' dataset that one could use to train a model was created from the [Co
 > The large data set will take some time to train, but I have gotten similar results to the small model using only 250 epochs (64 Batch Size, and Filter_Mode = 1). 
 
 *Personal Note:* 
-> I have not had the time & resources (as of the time of writing this readme) to try out different training parameters for the included 'large' data set to see which parameters yield the best model for said data set. However, that task is on my list of things to do over the summer of '19. But ultimately, the goal was to create a moderately easy and efficient tool to quickly train a Seq2Seq model on different data sets. 
+> I have not had the time & resources (as of the time of writing this readme) to try out different training parameters for the included 'large' data set and see/document which parameters yield the best model for said data set. However, that task is on my list of things to do over the summer of '19. But ultimately, the goal was to create a moderately easy and efficient tool to quickly train a Seq2Seq model on different data sets. 
 
 ## Credits
 This project was written by Daniel Van Der Maden as an Undergraduate Computer Science student at UC Berkeley.
