@@ -476,14 +476,12 @@ class ChatBot:
 
         while queue:
             this_batch_size = min(batch_size, len(queue))
+            if this_batch_size == 1:
+                return
+
             X_1_encoded = np.empty(this_batch_size, dtype=bytearray)
             X_2_encoded = np.empty(this_batch_size, dtype=bytearray)
             Y_encoded = np.empty(this_batch_size, dtype=bytearray)
-
-            if this_batch_size == 1:
-                index = queue.pop()
-                queue.extend([index, index])
-                this_batch_size = 2
 
             for i in range(this_batch_size):
                 encoded_index = queue.pop()
