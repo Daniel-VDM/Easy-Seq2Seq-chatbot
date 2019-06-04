@@ -74,8 +74,8 @@ class ChatBot:
 
     def __repr__(self):
         return f"<ChatBot Instance: Vocab Size={self.vocab_size}, n_in={self.n_in}, " \
-               f"n_out={self.n_out}, Vocab File={self.vocab_file_signature}, NER={self.ner_enabled}," \
-               f" Training File={self.train_data_signature}, Filter Mode={self.train_data_filter_mode}>"
+            f"n_out={self.n_out}, Vocab File={self.vocab_file_signature}, NER={self.ner_enabled}," \
+            f" Training File={self.train_data_signature}, Filter Mode={self.train_data_filter_mode}>"
 
     def __bool__(self):
         return self.encoder is not None and self.decoder is not None
@@ -259,7 +259,7 @@ class ChatBot:
         :return: an integer that depends on the last modified times
                  of the files in this instance's cache.
         """
-        lst = [int(os.path.getmtime(f"{self._cache_dir}/{f}")*1e12)
+        lst = [int(os.path.getmtime(f"{self._cache_dir}/{f}") * 1e12)
                for f in os.listdir(self._cache_dir) if f[-7:] == '.pickle']
         return sum(lst, 0)
 
@@ -409,21 +409,44 @@ class ChatBot:
         """
 
         def is_valid_data(question, answer):
-            q_toks, a_toks = nltk.word_tokenize(question), nltk.word_tokenize(answer)
+            q_toks = nltk.word_tokenize(question)
             if self.train_data_filter_mode == 1 and '?' not in q_toks:
                 return False
+            a_toks = nltk.word_tokenize(answer)
             if self.train_data_filter_mode == 2 and not ('?' in q_toks and '?' in a_toks):
                 return False
             return len(q_toks) <= self.n_in and len(a_toks) <= self.n_out
 
+        def truncate(encoding, terminals):  # Truncates encodings that don't end in a terminal.
+            old_encoding = None
+            for j in reversed(range(len(encoding))):
+                if encoding[j] == 0:  # 0 = token id for '<PADD>'.
+                    continue
+                if encoding[j] in terminals:
+                    return encoding
+                if old_encoding is None:  # Don't copy until you have to.
+                    old_encoding = np.copy(encoding)
+                encoding[j] = 0
+            return old_encoding  # Default to old encoding.
+
+        q_sentence_terminals = {self.token_to_id_dict["?"], self.token_to_id_dict["!"],
+                                self.token_to_id_dict["."], self.token_to_id_dict["..."], self.token_to_id_dict["--"]}
+        a_sentence_terminals = q_sentence_terminals.copy()
+        if self.train_data_filter_mode == 1 or self.train_data_filter_mode == 2:
+            q_sentence_terminals = {self.token_to_id_dict["?"]}
+        if self.train_data_filter_mode == 2:
+            a_sentence_terminals = {self.token_to_id_dict["?"]}
         encoded_x1, encoded_x2, encoded_y = [], [], []
         trained_QA_pairs = []
 
         print(">> Vocab Encoding Training Data <<")
         for i, (q, a) in enumerate(training_data_pairs):
+            q1, a1 = q, a
+            q, a = nltk.sent_tokenize(q)[0], nltk.sent_tokenize(a)[0],
             if is_valid_data(q, a):
-                q_vec = self.v_encode(q, self.n_in)
-                a_vec = self.v_encode(a, self.n_out)
+
+                q_vec = truncate(self.v_encode(q, self.n_in), q_sentence_terminals)
+                a_vec = truncate(self.v_encode(a, self.n_out), a_sentence_terminals)
                 a_shift_vec = np.roll(a_vec, 1)
                 a_shift_vec[0] = 1  # 1 = token id for '<START>'
 
@@ -638,14 +661,14 @@ class ChatBot:
         while i < epoch:
             for X_1, X_2, Y, batch_counter in self.batch_generator(batch_size=batch_size):
                 if verbose:
-                    print(f"\rEpoch: {i+1}/{epoch}, Batch: {batch_counter}. \tTraining...")
+                    print(f"\rEpoch: {i + 1}/{epoch}, Batch: {batch_counter}. \tTraining...")
                 X_1t, X_2t, Y_t, X_1v, X_2v, Y_v = ChatBot._create_validation_split(X_1, X_2, Y, split_pct)
                 self.model.fit([X_1t, X_2t], Y_t, epochs=1, batch_size=batch_size,
                                validation_data=([X_1v, X_2v], Y_v), verbose=verbose)
 
             sys.stdout.write('\x1b[2K')
             sys.stdout.flush()
-            sys.stdout.write(f"\rFinished epoch: {i+1}/{epoch}")
+            sys.stdout.write(f"\rFinished epoch: {i + 1}/{epoch}")
             sys.stdout.flush()
 
             pickle.dump({'OPTIONS': OPTIONS, 'epoch_count': i, 'cache_id': self.train_cache_id},
@@ -684,6 +707,7 @@ class ChatBot:
 
         Converts a (predicted) one-hot encoded VECTOR to a sentence.
         """
+        # TODO: Terminal truncation...
         sentence_tokens = []
         for el in vector:
             tok_id = np.argmax(el)  # Fetch index that has 1 as element.
