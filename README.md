@@ -45,7 +45,7 @@ Note that currently if NER is enabled, the generated responses/answers will have
   
 **Data Filtering:**
 
-The script filters the question-answer training data to get more useful q-and-a pairs for the model. As is, the script has 3 different filter modes that can be chosen and they are:
+The script filters the question-answer training data to get more useful q-and-a pairs for the model. As is, the script has 4 different filter modes that can be chosen and they are:
 
 0) Only take questions that have `n_in` (number of encoder recurrent steps) number of tokens and only take answers that have `n_out` (number of decoder recurrent steps) number of tokens.
 
