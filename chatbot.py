@@ -345,6 +345,20 @@ class ChatBot:
 
         return True
 
+    def get_question_terminals(self):
+        """
+        :return: A set of terminal string tokens for the questions.
+        """
+        mode = self.train_data_filter_mode
+        return {"?"} if mode == 1 or mode == 3 else {"?", "!", ".", "...", "--"}
+
+    def get_answer_terminals(self):
+        """
+        :return: A set of terminal string tokens for the answers.
+        """
+        mode = self.train_data_filter_mode
+        return {"?"} if mode == 2 or mode == 3 else {"?", "!", ".", "...", "--"}
+
     def v_encode(self, sentence, length=None, terminals=None):
         """
         Vocab encode the SENTENCE into a vector with LENGTH elements.
@@ -424,12 +438,8 @@ class ChatBot:
                 return False
             return len(q_toks) <= self.n_in and len(a_toks) <= self.n_out
 
-        q_sentence_terminals = {"?", "!", ".", "...", "--"}
-        a_sentence_terminals = q_sentence_terminals.copy()
-        if self.train_data_filter_mode == 1 or self.train_data_filter_mode == 3:
-            q_sentence_terminals = {"?"}
-        if self.train_data_filter_mode == 2 or self.train_data_filter_mode == 3:
-            a_sentence_terminals = {"?"}
+        q_terminals = self.get_question_terminals()
+        a_terminals = self.get_answer_terminals()
         encoded_x1, encoded_x2, encoded_y = [], [], []
         trained_QA_pairs = []
 
@@ -437,8 +447,8 @@ class ChatBot:
         for i, (q, a) in enumerate(training_data_pairs):
             q, a = nltk.sent_tokenize(q)[0], nltk.sent_tokenize(a)[0],
             if is_valid_data(q, a):
-                q_vec = self.v_encode(q, self.n_in, q_sentence_terminals)
-                a_vec = self.v_encode(a, self.n_out, a_sentence_terminals)
+                q_vec = self.v_encode(q, self.n_in, q_terminals)
+                a_vec = self.v_encode(a, self.n_out, a_terminals)
                 a_shift_vec = np.roll(a_vec, 1)
                 a_shift_vec[0] = 1  # 1 = token id for '<START>'
 
@@ -534,13 +544,16 @@ class ChatBot:
         if self.train_data_filter_mode != self._v_encoded_data_dict["filter_mode"]:
             return False
 
+        q_terminals = self.get_question_terminals()
+        a_terminals = self.get_answer_terminals()
+
         N = 30
         arr = np.random.choice(len(self._v_encoded_x1), size=min(N, len(self._v_encoded_x1)), replace=False)
         for i in arr:
             question_str, answer_str = self._trained_QA_pairs[i]
 
-            q_vec_ref = self.v_encode(question_str, self.n_in)
-            a_vec_ref = self.v_encode(answer_str, self.n_out)
+            q_vec_ref = self.v_encode(question_str, self.n_in, q_terminals)
+            a_vec_ref = self.v_encode(answer_str, self.n_out, a_terminals)
             a_shift_vec_ref = np.roll(a_vec_ref, 1)
             a_shift_vec_ref[0] = 1  # 1 = token id for '<START>'.
 
@@ -573,6 +586,36 @@ class ChatBot:
         self._v_encoded_y = self._v_encoded_data_dict['y']
         self._trained_QA_pairs = self._v_encoded_data_dict['qa_pairs']
         return True
+
+    def _attempt_recover(self, verbose):
+        """
+        Private method used in the train method.
+
+        Attempts to recover a model from the cache in case it has been interrupted.
+        :return the epoch count of recovered model or 0 if did not recover.
+        """
+        try:  # Recover model if possible.
+            if self.ignore_cache:
+                raise ValueError("Ignoring cache")
+            recovery_info = pickle.load(open(f'{self._cache_dir}/temp_model/info.pickle', 'rb'))
+            rOpts = recovery_info['OPTIONS']
+            if rOpts.n_in == OPTIONS.n_in and rOpts.n_out == OPTIONS.n_out \
+                    and rOpts.vocab_size == OPTIONS.vocab_size and rOpts.vocab_file == OPTIONS.vocab_file \
+                    and rOpts.train_file == OPTIONS.train_file and rOpts.filter_mode == OPTIONS.filter_mode \
+                    and rOpts.latent_dim == OPTIONS.latent_dim and rOpts.NER_disable == OPTIONS.NER_disable \
+                    and recovery_info['epoch_count'] < OPTIONS.epoch \
+                    and recovery_info['cache_id'] == self.train_cache_id:
+                self.encoder.load_weights(f'{self._cache_dir}/temp_model/encoder.h5')
+                self.decoder.load_weights(f'{self._cache_dir}/temp_model/decoder.h5')
+            else:
+                raise ValueError("Invalid recovery model.")
+            curr_epoch = recovery_info['epoch_count']
+            if verbose:
+                print("[!] Recovered model from cache.")
+        except (FileNotFoundError, KeyError, ValueError):
+            os.makedirs(f'{self._cache_dir}/temp_model', exist_ok=True)
+            curr_epoch = 0
+        return curr_epoch
 
     def train(self, data_file_path, filter_mode, latent_dim, epoch, batch_size, split_pct, verbose):
         """
@@ -628,24 +671,9 @@ class ChatBot:
             print("[!] Using cached training data encodings.")
 
         self.train_cache_id = self.cache_id()
+        i = self._attempt_recover(verbose=verbose)
 
-        try:  # Recover model if possible.
-            if self.ignore_cache:
-                raise ValueError("Ignoring cache")
-            recovery_info = pickle.load(open(f'{self._cache_dir}/temp_model/info.pickle', 'rb'))
-            if recovery_info['OPTIONS'] == OPTIONS and recovery_info['cache_id'] == self.train_cache_id:
-                self.encoder.load_weights(f'{self._cache_dir}/temp_model/encoder.h5')
-                self.decoder.load_weights(f'{self._cache_dir}/temp_model/decoder.h5')
-            else:
-                raise ValueError("Invalid recovery model.")
-            i = recovery_info['epoch_count']
-            if verbose:
-                print("[!] Recovered model from cache.")
-        except (FileNotFoundError, KeyError, ValueError):
-            os.makedirs(f'{self._cache_dir}/temp_model', exist_ok=True)
-            i = 0
-
-        if epoch > 0:
+        if epoch >= 0:
             print(f">> Training on {len(self._v_encoded_y)} Question-Answer pairs for {epoch} epochs <<")
 
         os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'  # Needed for Mac-OS.
