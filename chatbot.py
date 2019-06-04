@@ -745,6 +745,7 @@ class ChatBot:
             raise RuntimeError("Attempted to chat with an untrained model.")
         print("Chat-bot ready, type anything to start: (Ctrl + C or type '!EXIT' to stop chatting)")
         try:
+            terminals = self.get_question_terminals()
             while True:
                 sys.stdout.write(">")
                 sys.stdout.flush()
@@ -754,10 +755,10 @@ class ChatBot:
                     print("Done Chatting...\n")
                     return True
 
-                vocab_encoded_X_in = [self.v_encode(input_str, self.n_in)]
+                vocab_encoded_X_in = [self.v_encode(input_str, self.n_in, terminals)]
                 X_in = self._one_hot_encode(vocab_encoded_X_in)
                 Y_hat = self._predict(X_in)
-                print("Response: {}".format(self._vector_to_sentence(Y_hat)))
+                print(f"Response: {self._vector_to_sentence(Y_hat)}")
                 print(" ")
         except KeyboardInterrupt:
             print("\nDone Chatting...\n")
