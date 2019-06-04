@@ -594,9 +594,9 @@ class ChatBot:
         Attempts to recover a model from the cache in case script has been interrupted.
         :return the epoch count of recovered model or 0 if it did not recover.
         """
+        if self.ignore_cache:
+            return 0
         try:  # Recover model if possible.
-            if self.ignore_cache:
-                raise ValueError("Ignoring cache")
             recovery_info = pickle.load(open(f'{self._cache_dir}/temp_model/info.pickle', 'rb'))
             rOpts = recovery_info['OPTIONS']
             if rOpts.n_in == OPTIONS.n_in and rOpts.n_out == OPTIONS.n_out \
