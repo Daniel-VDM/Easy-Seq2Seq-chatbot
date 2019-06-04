@@ -418,15 +418,17 @@ class ChatBot:
             if self.train_data_filter_mode == 1 and '?' not in q_toks:
                 return False
             a_toks = nltk.word_tokenize(answer)
-            if self.train_data_filter_mode == 2 and not ('?' in q_toks and '?' in a_toks):
+            if self.train_data_filter_mode == 2 and '?' not in a_toks:
+                return False
+            if self.train_data_filter_mode == 3 and not ('?' in q_toks and '?' in a_toks):
                 return False
             return len(q_toks) <= self.n_in and len(a_toks) <= self.n_out
 
         q_sentence_terminals = {"?", "!", ".", "...", "--"}
         a_sentence_terminals = q_sentence_terminals.copy()
-        if self.train_data_filter_mode == 1 or self.train_data_filter_mode == 2:
+        if self.train_data_filter_mode == 1 or self.train_data_filter_mode == 3:
             q_sentence_terminals = {"?"}
-        if self.train_data_filter_mode == 2:
+        if self.train_data_filter_mode == 2 or self.train_data_filter_mode == 3:
             a_sentence_terminals = {"?"}
         encoded_x1, encoded_x2, encoded_y = [], [], []
         trained_QA_pairs = []
@@ -435,7 +437,6 @@ class ChatBot:
         for i, (q, a) in enumerate(training_data_pairs):
             q, a = nltk.sent_tokenize(q)[0], nltk.sent_tokenize(a)[0],
             if is_valid_data(q, a):
-
                 q_vec = self.v_encode(q, self.n_in, q_sentence_terminals)
                 a_vec = self.v_encode(a, self.n_out, a_sentence_terminals)
                 a_shift_vec = np.roll(a_vec, 1)
@@ -590,7 +591,8 @@ class ChatBot:
             0) Only take Questions that have n_in number of tokens and only take
             Answers that have n_out number of tokens.
             1) Mode 0 AND Question must have a '?' token.
-            2) Mode 0 AND Question & Answer must have a '?' token.
+            2) Mode 0 AND Answer must have a '?' token.
+            3) Mode 1 AND Mode 2.
 
         :param data_file_path: The path to the json file containing the QA pairs.
         :param filter_mode: An int that determines the filter mode of the training data.
@@ -795,11 +797,11 @@ def get_options():
                            "The 'data' attribute must be a list of question-answer pairs."
                            "Default = 'Cornell_Movie_Dialogs_Data.json'")
     opts.add_argument('-c', '--filter_mode', dest='filter_mode', type=int, default=0,
-                      help="An integer that dictates the filter imposed of the data. MODES: {0, 1, 2}. "
-                           "Mode 0: Only take Questions that have N_in number of tokens and only take Answers "
-                           "that have n_out number of tokens. Mode 1: All of Mode 0 AND Questions must have "
-                           "a '?' token. Mode 2: All of Mode 0 AND Question & Answer must have a '?' token. "
-                           "Default = 0")
+                      help="An integer that dictates the filter imposed of the data. MODES: {0, 1, 2, 3}. "
+                           "Mode 0: Only take questions that have N_in number of tokens and only take answers "
+                           "that have n_out number of tokens. Mode 1: All of Mode 0 AND questions must have "
+                           "a '?' token. Mode 2: All of Mode 0 AND answers must have a '?' token."
+                           "Mode 3: All of Mode 1 AND all of Mode 2. Default = 0")
     opts.add_argument('-e', '--epoch', dest='epoch', type=int, default=500,
                       help="The number of epochs for training. Default = 100.")
     opts.add_argument('-b', '--batch_size', dest='batch_size', type=int, default=32,

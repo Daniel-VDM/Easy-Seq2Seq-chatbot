@@ -47,11 +47,13 @@ Note that currently if NER is enabled, the generated responses/answers will have
 
 The script filters the question-answer training data to get more useful q-and-a pairs for the model. As is, the script has 3 different filter modes that can be chosen and they are:
 
-0) Only take Questions that have `n_in` (number of encoder recurrent steps) number of tokens and only take Answers that have `n_out` (number of decoder recurrent steps) number of tokens.
+0) Only take questions that have `n_in` (number of encoder recurrent steps) number of tokens and only take answers that have `n_out` (number of decoder recurrent steps) number of tokens.
 
-1) All of filter 0 *and* Questions must have a `?` token.
+1) All of filter 0 *and* questions must have a `?` token.
 
-2) All of filter 1 *and* Answers must have a `?` token.
+2) All of filter 0 *and* answers must have a `?` token.
+
+3) All of filter 1 *and* all of filter 2.
 
 > Filter 0 is so that all training data used fits the defined model. Filter 1 ensures that 'question' are indeed questions. Lastly, filter 2 encourages the model to respond with a question so that the conversation can carry on.
 
