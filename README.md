@@ -47,13 +47,15 @@ Note that currently if NER is enabled, the generated responses/answers will have
 
 The script filters the question-answer training data to get more useful q-and-a pairs for the model. As is, the script has 3 different filter modes that can be chosen and they are:
 
-1) Only take Questions that have `n_in` (number of encoder recurrent steps) number of tokens and only take Answers that have `n_out` (number of decoder recurrent steps) number of tokens.
+0) Only take Questions that have `n_in` (number of encoder recurrent steps) number of tokens and only take Answers that have `n_out` (number of decoder recurrent steps) number of tokens.
 
-2) All of filter 1 *and* Questions must have a `?` token.
+1) All of filter 0 *and* Questions must have a `?` token.
 
-3) All of filter 2 *and* Answers must have a `?` token.
+2) All of filter 1 *and* Answers must have a `?` token.
 
-> Filter 1 is so that all training data used fits the defined model. Filter 2 ensures that 'question' are indeed questions. Lastly, filter 3 encourages the model to respond with a question so that the conversation can carry on.
+> Filter 0 is so that all training data used fits the defined model. Filter 1 ensures that 'question' are indeed questions. Lastly, filter 2 encourages the model to respond with a question so that the conversation can carry on.
+
+*IMPORTANT*: All filters only use the first sentence of each entry in a question-answer pair. Also, all filters truncate the encoded sentences to the last seen terminal token (i.e: '.', '?', '!'). Note that the truncation is done conservatively, that is, it will NOT truncate the whole sentence if no terminal token is found, instead, it will just default to the original encoding.
 
 **Vocab and Data Caching:**
 
