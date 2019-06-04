@@ -591,8 +591,8 @@ class ChatBot:
         """
         Private method used in the train method.
 
-        Attempts to recover a model from the cache in case it has been interrupted.
-        :return the epoch count of recovered model or 0 if did not recover.
+        Attempts to recover a model from the cache in case script has been interrupted.
+        :return the epoch count of recovered model or 0 if it did not recover.
         """
         try:  # Recover model if possible.
             if self.ignore_cache:
