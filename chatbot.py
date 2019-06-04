@@ -345,7 +345,7 @@ class ChatBot:
 
         return True
 
-    def v_encode(self, sentence, length=None):
+    def v_encode(self, sentence, length=None, terminals=None):
         """
         Vocab encode the SENTENCE into a vector with LENGTH elements.
 
@@ -357,10 +357,13 @@ class ChatBot:
                          punctuation and unknown words/tokens.
         :param length: The length of the returned vector. It defaults to the number
                        of tokens in SENTENCE.
+        :param terminals: A set of terminal strings that mark the end of a sentence.
+                          Any token after the terminal token is truncated.
         :return: The vocab encoding of the sentence as described above.
         """
         sentence_tokens = nltk.word_tokenize(sentence)
         length = length if length else len(sentence_tokens)
+        terminals = terminals if terminals else set()
         vector = np.zeros(length, dtype=int)  # 0 = token id for '<PADD>'.
 
         entity = {}
@@ -370,6 +373,8 @@ class ChatBot:
                     entity[w] = f"<{ent.label_}>"
 
         for i, tok in zip(range(length), sentence_tokens):
+            if tok in terminals:
+                break
             if tok in entity:
                 tok_id = self.token_to_id_dict[entity[tok]]
             else:
@@ -417,36 +422,22 @@ class ChatBot:
                 return False
             return len(q_toks) <= self.n_in and len(a_toks) <= self.n_out
 
-        def truncate(encoding, terminals):  # Truncates encodings that don't end in a terminal.
-            old_encoding = None
-            for j in reversed(range(len(encoding))):
-                if encoding[j] == 0:  # 0 = token id for '<PADD>'.
-                    continue
-                if encoding[j] in terminals:
-                    return encoding
-                if old_encoding is None:  # Don't copy until you have to.
-                    old_encoding = np.copy(encoding)
-                encoding[j] = 0
-            return old_encoding  # Default to old encoding.
-
-        q_sentence_terminals = {self.token_to_id_dict["?"], self.token_to_id_dict["!"],
-                                self.token_to_id_dict["."], self.token_to_id_dict["..."], self.token_to_id_dict["--"]}
+        q_sentence_terminals = {"?", "!", ".", "...", "--"}
         a_sentence_terminals = q_sentence_terminals.copy()
         if self.train_data_filter_mode == 1 or self.train_data_filter_mode == 2:
-            q_sentence_terminals = {self.token_to_id_dict["?"]}
+            q_sentence_terminals = {"?"}
         if self.train_data_filter_mode == 2:
-            a_sentence_terminals = {self.token_to_id_dict["?"]}
+            a_sentence_terminals = {"?"}
         encoded_x1, encoded_x2, encoded_y = [], [], []
         trained_QA_pairs = []
 
         print(">> Vocab Encoding Training Data <<")
         for i, (q, a) in enumerate(training_data_pairs):
-            q1, a1 = q, a
             q, a = nltk.sent_tokenize(q)[0], nltk.sent_tokenize(a)[0],
             if is_valid_data(q, a):
 
-                q_vec = truncate(self.v_encode(q, self.n_in), q_sentence_terminals)
-                a_vec = truncate(self.v_encode(a, self.n_out), a_sentence_terminals)
+                q_vec = self.v_encode(q, self.n_in, q_sentence_terminals)
+                a_vec = self.v_encode(a, self.n_out, a_sentence_terminals)
                 a_shift_vec = np.roll(a_vec, 1)
                 a_shift_vec[0] = 1  # 1 = token id for '<START>'
 
