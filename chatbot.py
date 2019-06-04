@@ -707,7 +707,6 @@ class ChatBot:
 
         Converts a (predicted) one-hot encoded VECTOR to a sentence.
         """
-        # TODO: Terminal truncation...
         sentence_tokens = []
         for el in vector:
             tok_id = np.argmax(el)  # Fetch index that has 1 as element.
@@ -854,9 +853,6 @@ def get_saved_model(directory):
 OPTIONS = get_options()  # Global options for interactive sessions.
 
 if __name__ == "__main__":
-    # TODO: IMPLEMENTED AND TEST DECODER NER FEATURES.
-    # TODO: publish README...
-
     if not os.path.exists(OPTIONS.saved_models_dir):
         os.makedirs(OPTIONS.saved_models_dir, exist_ok=True)
 
