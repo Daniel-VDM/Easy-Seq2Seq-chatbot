@@ -271,7 +271,7 @@ The 'large' model parameters that yeilded the best results were: `n_in = XX, n_o
   <br><i></i>
 </p>
 
-> Note that I got somewhat weird responses for a chatbot, but it is understandable given that the training data were movie dialogues. A large dataset mostly containing 1 on 1 dialogue (like the 'small' model's data set) would definitely yield better responses. In the future, I may work on a filter to isolate (as best as possible) said dialogues and/or I'll try to find a better corpus.
+> Note that I got somewhat weird responses for a chatbot, but it is understandable given that the training data were movie dialogues. A large dataset mostly containing 1 on 1 dialogue (like the 'small' model's data set) would definitely yield better responses. In the future, I may work on a filter to isolate (as best as possible) said dialogues and/or I'll try to find a better dataset.
 
 
 ## Credits
