@@ -247,9 +247,9 @@ The 'small' model (that is saved in this repo) had its training data created fro
 
 The 'small' model parameters that yeilded the best results were: `n_in = 20, n_out = 20, Latent_Dim = 256, Vocab_Size = None, Epoch = 700, Batch_Size = 32, Split = 0.35, Filter_Mode = 1`. The model ended up with a held out loss of approximatly 0.04.
 
-**Sample Conversations:**
+**Sample Conversation:**
 
-<p align="left">
+<p align="center">
   <img src="https://i.imgur.com/0xVfqQB.png" width="750">
   <br><i></i>
 </p>
@@ -264,9 +264,9 @@ The 'large' model (that is saved in this repo) had its training data created fro
 The 'large' model parameters that yeilded the best results were: `n_in = XX, n_out = XX, Latent_Dim = 256, Vocab_Size = XXXXX, Epoch = XXX, Batch_Size = 32, Split = 0.35, Filter_Mode = 3`. The model ended up with a held out loss of approximatly XXX. 
 > Note that this will take a long time to train. Mine took about about 1 day on a AWS EC2 GPU instance (1x NVIDIA Tesla V100 GPU).
 
-**Sample Conversations:**
+**Sample Conversation:**
 
-<p align="left">
+<p align="center">
   <img src="TODO" width="750">
   <br><i></i>
 </p>
