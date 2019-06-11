@@ -85,7 +85,7 @@ The Data and Vocab file must be a JSON file and **both** have the following attr
 
 * Attribute: "signature". Mandatory for both. This is some sort of (string) identifier that ties back to the original source of the data, i.e: source_file_name + last modified time of source_file_name.
 
-> Sample JSON files can be found with the script ([`Cornell_Movie_Dialogs_Data.json`](Cornell_Movie_Dialogs_Data.json) & [`Small_Data.json`](Small_Data.json)). Furthermore, one could reference [`./training_data_scripts/Cornell-Data_json_creator.py`](training_data_scripts/Cornell-Data_json_creator.py) as a sample script that takes a CSV file and creates the desired JSON file.
+> Sample JSON files can be found with the script ([`Cornell_Movie_Dialogs_Data.json`](Cornell_Movie_Dialogs_Data.json) & [`Small_Data.json`](Small_Data.json)). Furthermore, one could reference [`./training_data_scripts/Cornell-Data_json_creator.py`](training_data_scripts/Cornell-Data_json_creator.py) as a sample script that takes a TSV file and creates the desired JSON file.
 
 ### Script options
 The script has various options that are handled by an options parser. To look up the options and their quick descriptions use the `--help` option, i.e: use the command: `python chatbot.py --help`.
@@ -237,32 +237,42 @@ Response: how are you ?
 Done Chatting...
 ```
 
-## A model trained on movie dialogs
+## Examples of trained chatbots
+### The 'small' data set model
 **Data info:**
 
-The 'small' model saved in this repo was trained on some handwritten [test data](training_data_scripts/dataset.txt). Each consecutive string in said dataset was a question-answer pair in the JSON file used for the vocab and training data.
+The 'small' model (that is saved in this repo) had its training data created from some handwritten [test data](training_data_scripts/dataset.txt). Each consecutive string in said dataset was a question-answer pair in the JSON file used for the vocab and training data.
 
 **Training info:**
 
-The 'small' model parameters that yeilded the best results were: `n_in = 20, n_out = 20, Latent_Dim = 128, Vocab_Size = None, Epoch = 600, Batch_Size = 32, Split = 0.35, Filter_Mode = 1`. The model ended up with a held out loss of approximatly 0.05.
+The 'small' model parameters that yeilded the best results were: `n_in = 20, n_out = 20, Latent_Dim = 256, Vocab_Size = None, Epoch = 700, Batch_Size = 32, Split = 0.35, Filter_Mode = 1`. The model ended up with a held out loss of approximatly 0.04.
 
 **Sample Conversations:**
 
-*'Small' Model*
 <p align="left">
-  <img src="https://i.imgur.com/fBmDkWd.png" width="750">
+  <img src="https://i.imgur.com/0xVfqQB.png" width="750">
   <br><i></i>
 </p>
 
-### Large Data Sets:
+### The 'large' data set model
+**Data info:**
 
-The 'large' dataset that one could use to train a model was created from the [Cornell's Movie Dialogs dataset](https://www.cs.cornell.edu/~cristian/Cornell_Movie-Dialogs_Corpus.html). Said dataset came as a CSV file with 5 columns: LineID, characterID, movieID, character name and text. When converting the CSV file to the JSON file for the script, the following filters were applied: First, it only considers rows where the text is 20 tokens or less. Next, for every row `i` that passes said first filter, the text of row `i` was a question and text of row `i+1` was the respective answer so long as the movieIDs were the same, characterIDs were different and LineIDs were consecutive.
+The 'large' model (that is saved in this repo) had its training data created from the [Cornell's Movie Dialogs dataset](https://www.cs.cornell.edu/~cristian/Cornell_Movie-Dialogs_Corpus.html). Said dataset came as a TSV file with 5 columns: LineID, characterID, movieID, character name and text. When converting the TSV file to the JSON file for the script, the following filters were applied: First, it only considers rows where the text is 20 tokens or less. Next, for every row `i` that passes said first filter, the text of row `i` was a question and text of row `i+1` was the respective answer so long as the movieIDs were the same, characterIDs were different and LineIDs were consecutive.
 
-**Important Note regarding the included Large Dataset:**
-> The large data set will take some time to train, but I have gotten similar results to the small model using only 250 epochs (64 Batch Size, and Filter_Mode = 1). 
+**Training info:**
 
-*Personal Note:* 
-> I have not had the time & resources (as of the time of writing this readme) to try out different training parameters for the included 'large' data set and see/document which parameters yield the best model for said data set. However, that task is on my list of things to do over the summer of '19. But ultimately, the goal was to create a moderately easy and efficient tool to quickly train a Seq2Seq model on different data sets. 
+The 'large' model parameters that yeilded the best results were: `n_in = XX, n_out = XX, Latent_Dim = 256, Vocab_Size = XXXXX, Epoch = XXX, Batch_Size = 32, Split = 0.35, Filter_Mode = 3`. The model ended up with a held out loss of approximatly XXX. 
+> Note that this will take a long time to train. Mine took about about 1 day on a AWS EC2 GPU instance (1x NVIDIA Tesla V100 GPU).
+
+**Sample Conversations:**
+
+<p align="left">
+  <img src="TODO" width="750">
+  <br><i></i>
+</p>
+
+> Note that I got somewhat weird responses for a chatbot, but it is understandable given that the training data were movie dialogues. A large dataset mostly containing 1 on 1 dialogue (like the 'small' model's data set) would definitely yield better responses. In the future, I may work on a filter to isolate (as best as possible) said dialogues and/or I'll try to find a better corpus.
+
 
 ## Credits
 This project was written by Daniel Van Der Maden as an Undergraduate Computer Science student at UC Berkeley.
