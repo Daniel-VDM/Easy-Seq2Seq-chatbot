@@ -249,7 +249,7 @@ The 'small' model parameters that yeilded the best results were: `n_in = 20, n_o
 
 **Sample Conversations:**
 
-<p align="left">
+<p align="center">
   <img src="https://i.imgur.com/0xVfqQB.png" width="750">
   <br><i></i>
 </p>
@@ -266,7 +266,7 @@ The 'large' model parameters that yeilded the best results were: `n_in = XX, n_o
 
 **Sample Conversations:**
 
-<p align="left">
+<p align="center">
   <img src="TODO" width="750">
   <br><i></i>
 </p>
