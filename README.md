@@ -267,7 +267,7 @@ The 'large' model's parameters were: `n_in = 15, n_out = 15, Latent_Dim = 256, V
 **Sample Conversation:**
 
 <p align="center">
-  <img src="https://i.imgur.com/HgkiSEF.png" width="750">
+  <img src="https://i.imgur.com/RJPvnyy.png" width="750">
   <br><i></i>
 </p>
 
