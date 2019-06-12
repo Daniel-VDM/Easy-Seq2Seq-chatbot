@@ -7,6 +7,8 @@ This script implements a chatbot using a sequence to sequence (seq2seq) model wi
 **Script Summary**:
 The goal of the script was to provide an easier way to vary various parameters regarding the seq2seq model (such as encoder & decoder recurrent steps, latent dimensions, training epochs, etc..). Furthermore, the script uses a more memory friendly way of training the seq2seq model, which allows the user to train models with large datasets of question-answer pairs. Also, the script has some caching implemented for reprocessing training data as "preparing" the data takes a long time for large datasets. Lastly, the script can save models once it's trained, as well as load trained models to chat with.
 
+**Some sample dialogue with chatbots that were trained with this script can be seen [below](#examples-of-trained-chatbots).**
+
 ## Model Explanation
 <p align="center">
   <img src="https://isaacchanghau.github.io/img/nlp/seq2seq-neuralconver/seq2seq.png" width="900">
@@ -267,11 +269,11 @@ The 'large' model's parameters were: `n_in = 15, n_out = 15, Latent_Dim = 256, V
 **Sample Conversation:**
 
 <p align="center">
-  <img src="https://i.imgur.com/HgkiSEF.png" width="750">
+  <img src="https://i.imgur.com/RJPvnyy.png" width="750">
   <br><i></i>
 </p>
 
-> Note that I got somewhat weird responses for a chatbot, but it is understandable given that the training data were movie dialogues. A large dataset mostly containing 1 on 1 dialogue (like the 'small' model's data set) would definitely yield better responses. In the future, I may work on a filter to isolate (as best as possible) said dialogues and/or I'll try to find a better dataset.
+>I got somewhat weird responses for a chatbot, but it is understandable given that the training data were movie dialogues. However, one could do some more post-processing on responses to correct for grammar and spacing and maybe even substitute back in entities. Note that a large dataset mostly containing 1 on 1 dialogue (like the 'small' model's data set) would definitely yield better responses. In the future, I may work on a filter that tries to isolate said dialogues and/or I'll try to find a better dataset.
 
 
 ## Credits
