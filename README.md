@@ -128,12 +128,12 @@ optional arguments:
                         'Cornell_Movie_Dialogs_Data.json'
   -c FILTER_MODE, --filter_mode FILTER_MODE
                         An integer that dictates the filter imposed of the
-                        data. MODES: {0, 1, 2}. Mode 0: Only take Questions
-                        that have N_in number of tokens and only take Answers
+                        data. MODES: {0, 1, 2, 3}. Mode 0: Only take questions
+                        that have N_in number of tokens and only take answers
                         that have n_out number of tokens. Mode 1: All of Mode
-                        0 AND Questions must have a '?' token. Mode 2: All of
-                        Mode 0 AND Question & Answer must have a '?' token.
-                        Default = 0
+                        0 AND questions must have a '?' token. Mode 2: All of
+                        Mode 0 AND answers must have a '?' token.Mode 3: All
+                        of Mode 1 AND all of Mode 2. Default = 0
   -e EPOCH, --epoch EPOCH
                         The number of epochs for training. Default = 100.
   -b BATCH_SIZE, --batch_size BATCH_SIZE
