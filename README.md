@@ -7,6 +7,8 @@ This script implements a chatbot using a sequence to sequence (seq2seq) model wi
 **Script Summary**:
 The goal of the script was to provide an easier way to vary various parameters regarding the seq2seq model (such as encoder & decoder recurrent steps, latent dimensions, training epochs, etc..). Furthermore, the script uses a more memory friendly way of training the seq2seq model, which allows the user to train models with large datasets of question-answer pairs. Also, the script has some caching implemented for reprocessing training data as "preparing" the data takes a long time for large datasets. Lastly, the script can save models once it's trained, as well as load trained models to chat with.
 
+**Some sample dialogue with chatbots that were trained with this script can be seen [below](#examples-of-trained-chatbots).**
+
 ## Model Explanation
 <p align="center">
   <img src="https://isaacchanghau.github.io/img/nlp/seq2seq-neuralconver/seq2seq.png" width="900">
