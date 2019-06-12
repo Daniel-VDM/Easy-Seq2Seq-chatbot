@@ -271,7 +271,7 @@ The 'large' model's parameters were: `n_in = 15, n_out = 15, Latent_Dim = 256, V
   <br><i></i>
 </p>
 
-> Note that I got somewhat weird responses for a chatbot, but it is understandable given that the training data were movie dialogues. A large dataset mostly containing 1 on 1 dialogue (like the 'small' model's data set) would definitely yield better responses. In the future, I may work on a filter to isolate (as best as possible) said dialogues and/or I'll try to find a better dataset.
+>I got somewhat weird responses for a chatbot, but it is understandable given that the training data were movie dialogues. However, one could do some more post-processing on responses to correct for grammar and spacing and maybe even substitute back in entities. Note that a large dataset mostly containing 1 on 1 dialogue (like the 'small' model's data set) would definitely yield better responses. In the future, I may work on a filter that tries to isolate said dialogues and/or I'll try to find a better dataset.
 
 
 ## Credits
