@@ -2,7 +2,7 @@
  
 This script implements a chatbot using a sequence to sequence (seq2seq) model with an easy way to define training and model parameters.
 
-**Indented Usage**: With this script, one could try out different data sets and model parameters to see how the resulting models/chatbots differ.
+**Indented Usage**: One could use this as a learning tool to demonstrate how different data sets and model parameters affect a chatbot's fidelity. 
 
 **Script Summary**:
 The goal of the script was to provide an easier way to vary various parameters regarding the seq2seq model (such as encoder & decoder recurrent steps, latent dimensions, training epochs, etc..). Furthermore, the script uses a more memory friendly way of training the seq2seq model, which allows the user to train models with large datasets of question-answer pairs. Also, the script has some caching implemented for reprocessing training data as "preparing" the data takes a long time for large datasets. Lastly, the script can save models once it's trained, as well as load trained models to chat with.
